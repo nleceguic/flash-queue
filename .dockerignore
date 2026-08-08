@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+.git/
+.vs/
+.vscode/
+**/*.user
+**/launchSettings.json
+docs/
+tests/
+*.md
+FlashQueue_Project_Brief.pdf

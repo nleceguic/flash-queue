@@ -1,0 +1,259 @@
+# Levanta TODO el sistema FlashQueue con un solo comando: `docker compose up -d`.
+#
+# Arrancan por defecto (sin profile): Postgres, RabbitMQ, FlashQueue.Api, FlashQueue.Workers y los
+# tres FlashQueue.Consumers.* — un sistema end-to-end funcional. El stack de observabilidad
+# (Collector + Tempo + Prometheus + Grafana) es opcional y vive detrás del profile
+# "observability" (`docker compose --profile observability up -d`) porque tiene un ciclo de vida
+# propio: no siempre hace falta levantarlo para probar el sistema. Ver README-DOCKER.md.
+services:
+  # ---------------------------------------------------------------------------------------------
+  # Infraestructura
+  # ---------------------------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: flashqueue
+      POSTGRES_USER: flashqueue
+      POSTGRES_PASSWORD: flashqueue
+    ports:
+      - "5432:5432"
+    volumes:
+      - flashqueue-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flashqueue -d flashqueue"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: flashqueue
+      RABBITMQ_DEFAULT_PASS: flashqueue
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # Panel de administración: http://localhost:15672 (flashqueue/flashqueue)
+    volumes:
+      - flashqueue-rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---------------------------------------------------------------------------------------------
+  # Aplicación — todas comparten el Dockerfile genérico de la raíz (ver ese archivo), solo cambia
+  # qué proyecto publican (PROJECT_PATH) y qué ensamblado arrancan (ASSEMBLY_NAME).
+  # ---------------------------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      args:
+        PROJECT_PATH: src/FlashQueue.Api/FlashQueue.Api.csproj
+        ASSEMBLY_NAME: FlashQueue.Api
+    environment:
+      DOTNET_ENVIRONMENT: Development
+      Observability__OtlpEndpoint: http://otel-collector:4317
+    ports:
+      - "5257:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  workers:
+    build:
+      context: .
+      args:
+        PROJECT_PATH: src/FlashQueue.Workers/FlashQueue.Workers.csproj
+        ASSEMBLY_NAME: FlashQueue.Workers
+    environment:
+      DOTNET_ENVIRONMENT: Development
+      ConnectionStrings__FlashQueueDb: Host=postgres;Port=5432;Database=flashqueue;Username=flashqueue;Password=flashqueue
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Port: "5672"
+      RabbitMq__Username: flashqueue
+      RabbitMq__Password: flashqueue
+      Observability__OtlpEndpoint: http://otel-collector:4317
+      # Modo caos (ver docs/adr/0005-modo-caos.md): desactivado salvo que se exporte CHAOS_MODE=true
+      # en el shell antes de "docker compose up" — ver README-DOCKER.md.
+      CHAOS_MODE: ${CHAOS_MODE:-false}
+    ports:
+      - "5280:8080" # /health/dependencies expone el estado del circuit breaker de RabbitMQ
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/dependencies"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  consumers-payments:
+    build:
+      context: .
+      args:
+        PROJECT_PATH: src/FlashQueue.Consumers.Payments/FlashQueue.Consumers.Payments.csproj
+        ASSEMBLY_NAME: FlashQueue.Consumers.Payments
+    environment:
+      DOTNET_ENVIRONMENT: Development
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Port: "5672"
+      RabbitMq__Username: flashqueue
+      RabbitMq__Password: flashqueue
+    ports:
+      - "5281:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  consumers-notifications:
+    build:
+      context: .
+      args:
+        PROJECT_PATH: src/FlashQueue.Consumers.Notifications/FlashQueue.Consumers.Notifications.csproj
+        ASSEMBLY_NAME: FlashQueue.Consumers.Notifications
+    environment:
+      DOTNET_ENVIRONMENT: Development
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Port: "5672"
+      RabbitMq__Username: flashqueue
+      RabbitMq__Password: flashqueue
+    ports:
+      - "5282:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  consumers-analytics:
+    build:
+      context: .
+      args:
+        PROJECT_PATH: src/FlashQueue.Consumers.Analytics/FlashQueue.Consumers.Analytics.csproj
+        ASSEMBLY_NAME: FlashQueue.Consumers.Analytics
+    environment:
+      DOTNET_ENVIRONMENT: Development
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Port: "5672"
+      RabbitMq__Username: flashqueue
+      RabbitMq__Password: flashqueue
+    ports:
+      - "5283:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ---------------------------------------------------------------------------------------------
+  # Observabilidad (profile "observability", opcional) — Collector + Tempo (trazas) + Prometheus
+  # (métricas) + Grafana (dashboards). Ver docs/adr/0006-opentelemetry-collector-como-fan-out.md.
+  # La app apunta su único endpoint OTLP configurable (Observability__OtlpEndpoint, ya fijado
+  # arriba en api/workers) al Collector; si este profile no está activo, esas exportaciones
+  # simplemente fallan en segundo plano sin afectar a la app (el exporter OTLP es best-effort).
+  # ---------------------------------------------------------------------------------------------
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.102.1
+    profiles: ["observability"]
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./observability/otel-collector/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC — a esto debe apuntar Observability__OtlpEndpoint
+      - "4318:4318"   # OTLP HTTP
+      - "13133:13133" # extensión health_check — curl http://localhost:13133 para comprobar el estado a mano
+    depends_on:
+      - tempo
+      - prometheus
+
+  tempo:
+    image: grafana/tempo:2.5.0
+    profiles: ["observability"]
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./observability/tempo/tempo.yaml:/etc/tempo.yaml:ro
+      - flashqueue-tempo-data:/var/tempo
+    ports:
+      - "3200:3200" # API de consultas de Tempo (la usa Grafana, no hace falta abrirla a mano)
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3200/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    profiles: ["observability"]
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-remote-write-receiver" # el Collector empuja aquí, Prometheus no hace scrape de la app
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - flashqueue-prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    profiles: ["observability"]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000" # http://localhost:3000 — sin login (modo anónimo), dashboard ya provisionado
+    depends_on:
+      - tempo
+      - prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  flashqueue-postgres-data:
+  flashqueue-rabbitmq-data:
+  flashqueue-tempo-data:
+  flashqueue-prometheus-data:

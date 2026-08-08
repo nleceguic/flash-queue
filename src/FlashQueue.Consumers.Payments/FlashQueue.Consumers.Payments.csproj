@@ -6,6 +6,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- WebApplication/Minimal API para exponer /health (ver docker-compose.yml en la raíz: los
+         healthchecks de Docker necesitan una superficie HTTP, incluso en un Worker Service). -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.10" />
   </ItemGroup>
 

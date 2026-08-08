@@ -1,8 +1,12 @@
 using FlashQueue.Consumers.Analytics.Consumers;
 using FlashQueue.Infrastructure;
-using Microsoft.Extensions.Hosting;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 
-var builder = Host.CreateApplicationBuilder(args);
+// WebApplication (no Host.CreateApplicationBuilder) solo para exponer /health: docker-compose.yml
+// necesita una superficie HTTP para el healthcheck de este servicio, aunque su trabajo real sea
+// consumir de RabbitMQ, no servir peticiones.
+var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRabbitMqMessaging(builder.Configuration, serviceName: "analytics", configureConsumers: x =>
 {
@@ -10,6 +14,8 @@ builder.Services.AddRabbitMqMessaging(builder.Configuration, serviceName: "analy
     x.AddConsumer<ReservationRejectedConsumer>();
 });
 
-var host = builder.Build();
+var app = builder.Build();
 
-await host.RunAsync();
+app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
+
+await app.RunAsync();
