@@ -81,3 +81,7 @@ Cada decisión de arquitectura no trivial está documentada como ADR corto
 `Channel<T>` en memoria y no una cola externa, por qué locking pesimista
 en Postgres y no optimista, por qué RabbitMQ y no Kafka, y por qué no
 Entity Framework para las tablas de stock.
+
+## Licencia
+
+[MIT](LICENSE)
