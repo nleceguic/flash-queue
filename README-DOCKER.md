@@ -16,7 +16,7 @@ Esto construye y arranca, en orden (Postgres y RabbitMQ tienen que estar
 
 | Servicio                  | Puerto host | Qué es |
 |----------------------------|:-----------:|--------|
-| `postgres`                 | `5432`      | Base de datos |
+| `postgres`                 | `5433`      | Base de datos (puerto host no estándar a propósito, para no chocar con otro Postgres local) |
 | `rabbitmq`                 | `5672` / `15672` | Broker AMQP / **panel de administración** (`http://localhost:15672`, usuario y contraseña `flashqueue`) |
 | `workers`                  | `5257` / `5280` | Proceso único (ver [ADR 0013](docs/adr/0013-api-y-workers-no-comparten-el-channel-de-ingesta.md)): `POST /events/{eventId}/reservations` (`5257`) + motor de reserva + `GET /health/dependencies` (`5280`, estado del circuit breaker de RabbitMQ) |
 | `consumers-payments`       | `5281`      | Stub de Pagos |

@@ -12,7 +12,8 @@ services:
       POSTGRES_USER: flashqueue
       POSTGRES_PASSWORD: flashqueue
     ports:
-      - "5432:5432"
+      # 5433 en el host para no chocar con otro Postgres local; dentro de la red sigue siendo 5432.
+      - "5433:5432"
     volumes:
       - flashqueue-postgres-data:/var/lib/postgresql/data
     healthcheck:
