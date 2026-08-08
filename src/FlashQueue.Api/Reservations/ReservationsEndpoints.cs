@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using FlashQueue.Application.Ingestion;
+using FlashQueue.Application.Observability;
 using FlashQueue.Domain.Entities;
 using Microsoft.AspNetCore.Http.HttpResults;
 
@@ -49,7 +51,18 @@ public static class ReservationsEndpoints
         var reservationRequest = new ReservationRequest(
             Guid.NewGuid(), eventId, body.UserId, body.Quantity, timeProvider.GetUtcNow());
 
-        await ingestChannel.Writer.WriteAsync(reservationRequest, cancellationToken);
+        // Span propio (hijo del span de ASP.NET Core auto-instrumentado de esta petición) que
+        // marca el punto exacto de encolado. Su contexto viaja con el item a través del channel
+        // (ver ReservationIngestItem) para que ReservationProcessingWorker pueda reconectar la
+        // traza al otro lado del boundary asíncrono.
+        using var activity = FlashQueueDiagnostics.ActivitySource.StartActivity(
+            "reservation.enqueue", ActivityKind.Producer);
+        activity?.SetTag("reservation.id", reservationRequest.Id);
+        activity?.SetTag("event.id", reservationRequest.EventId);
+        activity?.SetTag("reservation.quantity", reservationRequest.Quantity);
+
+        var traceContext = activity?.Context ?? Activity.Current?.Context ?? default;
+        await ingestChannel.Writer.WriteAsync(new ReservationIngestItem(reservationRequest, traceContext), cancellationToken);
 
         return TypedResults.Accepted<ReservationAcceptedResponse>(
             uri: (string?)null,

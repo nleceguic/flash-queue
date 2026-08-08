@@ -1,0 +1,11 @@
+# Las métricas de FlashQueue llegan por remote-write empujado desde el OpenTelemetry Collector
+# (--web.enable-remote-write-receiver en el comando del contenedor), no por scraping — por eso
+# aquí no hay scrape_configs para la app. Se deja el self-scrape de Prometheus por si hace falta
+# depurar el propio receptor.
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

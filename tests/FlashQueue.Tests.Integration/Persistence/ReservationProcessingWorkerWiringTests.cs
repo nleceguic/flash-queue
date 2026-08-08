@@ -94,8 +94,8 @@ public sealed class ReservationProcessingWorkerWiringTests : IAsyncLifetime
         var channel = _host.Services.GetRequiredService<ReservationIngestChannel>();
         for (var i = 0; i < requestCount; i++)
         {
-            await channel.Writer.WriteAsync(
-                new ReservationRequest(Guid.NewGuid(), eventId, Guid.NewGuid(), 1, DateTimeOffset.UtcNow));
+            await channel.Writer.WriteAsync(new ReservationIngestItem(
+                new ReservationRequest(Guid.NewGuid(), eventId, Guid.NewGuid(), 1, DateTimeOffset.UtcNow), default));
         }
 
         await using var verifyConnection = await _dataSource.OpenConnectionAsync();

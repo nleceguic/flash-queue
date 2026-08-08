@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: FlashQueue
+    orgId: 1
+    folder: FlashQueue
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards

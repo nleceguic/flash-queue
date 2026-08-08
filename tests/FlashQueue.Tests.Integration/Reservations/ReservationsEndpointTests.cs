@@ -31,9 +31,9 @@ public sealed class ReservationsEndpointTests : IClassFixture<WebApplicationFact
         {
             try
             {
-                await foreach (var request in ingestChannel.Reader.ReadAllAsync(drainCts.Token))
+                await foreach (var item in ingestChannel.Reader.ReadAllAsync(drainCts.Token))
                 {
-                    drainedIds.Add(request.Id);
+                    drainedIds.Add(item.Request.Id);
                 }
             }
             catch (OperationCanceledException)

@@ -23,11 +23,12 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\FlashQueue.Api\FlashQueue.Api.csproj" />
     <ProjectReference Include="..\..\src\FlashQueue.Application\FlashQueue.Application.csproj" />
-    <ProjectReference Include="..\..\src\FlashQueue.Consumers.Analytics\FlashQueue.Consumers.Analytics.csproj" />
-    <ProjectReference Include="..\..\src\FlashQueue.Consumers.Notifications\FlashQueue.Consumers.Notifications.csproj" />
-    <ProjectReference Include="..\..\src\FlashQueue.Consumers.Payments\FlashQueue.Consumers.Payments.csproj" />
     <ProjectReference Include="..\..\src\FlashQueue.Infrastructure\FlashQueue.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\FlashQueue.Workers\FlashQueue.Workers.csproj" />
+    <ProjectReference Include="..\..\src\FlashQueue.Contracts\FlashQueue.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\FlashQueue.Consumers.Payments\FlashQueue.Consumers.Payments.csproj" />
+    <ProjectReference Include="..\..\src\FlashQueue.Consumers.Notifications\FlashQueue.Consumers.Notifications.csproj" />
+    <ProjectReference Include="..\..\src\FlashQueue.Consumers.Analytics\FlashQueue.Consumers.Analytics.csproj" />
   </ItemGroup>
 
 </Project>

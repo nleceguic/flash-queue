@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using FlashQueue.Application.Observability;
 using FlashQueue.Application.Processing;
 using FlashQueue.Contracts.Events;
 using FlashQueue.Domain.Entities;
@@ -22,6 +24,16 @@ public sealed class PostgresReservationProcessor(
         var reservation = await repository.ReserveAsync(request, cancellationToken);
         var resolvedAt = reservation.ResolvedAt
             ?? throw new InvalidOperationException("Una reserva resuelta por ReserveAsync siempre debe tener ResolvedAt.");
+
+        var statusTag = new KeyValuePair<string, object?>("reservation.status", reservation.Status.ToString());
+        Activity.Current?.SetTag(statusTag.Key, statusTag.Value);
+
+        // La reserva ya cuenta como "procesada" aquí, tanto para la métrica de throughput como
+        // para la de latencia: RequestedAt→ResolvedAt mide el tiempo hasta que la decisión de
+        // negocio queda persistida, que es lo que le importa a quien está esperando la reserva —
+        // un fallo de publicación después de este punto no debe inflar ni contaminar esa medida.
+        FlashQueueDiagnostics.ReservationsProcessed.Add(1, statusTag);
+        FlashQueueDiagnostics.ProcessingDuration.Record((resolvedAt - request.RequestedAt).TotalMilliseconds, statusTag);
 
         // La reserva ya quedó persistida en Postgres en este punto (ver ADR 0004): si RabbitMQ
         // está caído o el circuito está abierto, se registra el fallo de publicación y se

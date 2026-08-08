@@ -17,7 +17,7 @@ public class ReservationIngestChannelTests
             var pending = new Task[writerCount];
             for (var i = 0; i < writerCount; i++)
             {
-                pending[i] = channel.Writer.WriteAsync(NewRequest()).AsTask();
+                pending[i] = channel.Writer.WriteAsync(NewItem()).AsTask();
             }
 
             return pending;
@@ -53,17 +53,17 @@ public class ReservationIngestChannelTests
     {
         var channel = new ReservationIngestChannel(new ReservationIngestOptions { Capacity = 1 });
 
-        channel.Writer.TryWrite(NewRequest()).Should().BeTrue();
-        channel.Writer.TryWrite(NewRequest()).Should().BeFalse();
+        channel.Writer.TryWrite(NewItem()).Should().BeTrue();
+        channel.Writer.TryWrite(NewItem()).Should().BeFalse();
     }
 
     [Fact]
     public async Task WriteAsync_WhenChannelIsFull_CompletesOnlyAfterReaderMakesRoom()
     {
         var channel = new ReservationIngestChannel(new ReservationIngestOptions { Capacity = 1 });
-        await channel.Writer.WriteAsync(NewRequest());
+        await channel.Writer.WriteAsync(NewItem());
 
-        var secondWrite = channel.Writer.WriteAsync(NewRequest()).AsTask();
+        var secondWrite = channel.Writer.WriteAsync(NewItem()).AsTask();
         secondWrite.IsCompleted.Should().BeFalse();
 
         await channel.Reader.ReadAsync();
@@ -72,6 +72,6 @@ public class ReservationIngestChannelTests
         secondWrite.IsCompletedSuccessfully.Should().BeTrue();
     }
 
-    private static ReservationRequest NewRequest() =>
-        new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), 1, DateTimeOffset.UtcNow);
+    private static ReservationIngestItem NewItem() =>
+        new(new ReservationRequest(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), 1, DateTimeOffset.UtcNow), default);
 }

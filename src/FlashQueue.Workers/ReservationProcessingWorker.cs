@@ -1,8 +1,9 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Threading.Channels;
 using FlashQueue.Application.Ingestion;
+using FlashQueue.Application.Observability;
 using FlashQueue.Application.Processing;
-using FlashQueue.Domain.Entities;
 using Microsoft.Extensions.Options;
 
 namespace FlashQueue.Workers;
@@ -19,7 +20,7 @@ public sealed class ReservationProcessingWorker : BackgroundService
     private readonly ReservationProcessingOptions _options;
     private readonly ILogger<ReservationProcessingWorker> _logger;
 
-    private readonly ConcurrentDictionary<Guid, ConcurrentQueue<ReservationRequest>> _eventQueues = new();
+    private readonly ConcurrentDictionary<Guid, ConcurrentQueue<ReservationIngestItem>> _eventQueues = new();
     private readonly ConcurrentDictionary<Guid, byte> _activeEvents = new();
     private readonly Channel<Guid> _turns = Channel.CreateUnbounded<Guid>(new UnboundedChannelOptions
     {
@@ -72,9 +73,9 @@ public sealed class ReservationProcessingWorker : BackgroundService
     {
         try
         {
-            await foreach (var request in _ingestChannel.Reader.ReadAllAsync(stoppingToken))
+            await foreach (var item in _ingestChannel.Reader.ReadAllAsync(stoppingToken))
             {
-                Enqueue(request);
+                Enqueue(item);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -83,11 +84,11 @@ public sealed class ReservationProcessingWorker : BackgroundService
         }
     }
 
-    private void Enqueue(ReservationRequest request)
+    private void Enqueue(ReservationIngestItem item)
     {
-        var eventId = request.EventId;
-        var queue = _eventQueues.GetOrAdd(eventId, static _ => new ConcurrentQueue<ReservationRequest>());
-        queue.Enqueue(request);
+        var eventId = item.Request.EventId;
+        var queue = _eventQueues.GetOrAdd(eventId, static _ => new ConcurrentQueue<ReservationIngestItem>());
+        queue.Enqueue(item);
 
         // Solo se concede un turno en la ronda por evento a la vez: mientras el evento ya
         // tenga un turno pendiente, los nuevos items simplemente se acumulan en su cola.
@@ -120,7 +121,7 @@ public sealed class ReservationProcessingWorker : BackgroundService
                 }
 
                 var queue = _eventQueues[eventId];
-                if (!queue.TryDequeue(out var request))
+                if (!queue.TryDequeue(out var item))
                 {
                     // No debería ocurrir: un turno solo se concede cuando hay al menos un item
                     // en la cola del evento. Nos protegemos igualmente de una condición imposible.
@@ -131,7 +132,7 @@ public sealed class ReservationProcessingWorker : BackgroundService
 
                 CompleteTurn(eventId, queue);
 
-                _ = ProcessAsync(request);
+                _ = ProcessAsync(item);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -145,7 +146,7 @@ public sealed class ReservationProcessingWorker : BackgroundService
     /// Usa doble comprobación para no perder el turno si un productor encola concurrentemente
     /// justo entre la comprobación de vacío y la retirada de la marca de "activo".
     /// </summary>
-    private void CompleteTurn(Guid eventId, ConcurrentQueue<ReservationRequest> queue)
+    private void CompleteTurn(Guid eventId, ConcurrentQueue<ReservationIngestItem> queue)
     {
         if (!queue.IsEmpty)
         {
@@ -161,14 +162,28 @@ public sealed class ReservationProcessingWorker : BackgroundService
         }
     }
 
-    private async Task ProcessAsync(ReservationRequest request)
+    private async Task ProcessAsync(ReservationIngestItem item)
     {
+        var request = item.Request;
+
+        // ActivityKind.Consumer + el contexto capturado en el momento de encolar (ver
+        // ReservationsEndpoints/ReservationIngestItem): esto reconecta la traza al otro lado del
+        // channel como un hijo real del span "reservation.enqueue" de la petición HTTP original,
+        // no como una traza nueva sin relación con la que la originó.
+        using var activity = FlashQueueDiagnostics.ActivitySource.StartActivity(
+            "reservation.process", ActivityKind.Consumer, item.TraceContext);
+        activity?.SetTag("reservation.id", request.Id);
+        activity?.SetTag("event.id", request.EventId);
+        activity?.SetTag("reservation.quantity", request.Quantity);
+
         try
         {
             await _processor.ProcessAsync(request, CancellationToken.None);
+            activity?.SetStatus(ActivityStatusCode.Ok);
         }
         catch (Exception ex)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             _logger.LogError(
                 ex, "Error procesando la reserva {ReservationId} del evento {EventId}", request.Id, request.EventId);
         }

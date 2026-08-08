@@ -38,12 +38,12 @@ public class ReservationProcessingWorkerTests
 
         for (var i = 0; i < 100; i++)
         {
-            channel.Writer.TryWrite(NewRequest(busyEvent)).Should().BeTrue();
+            channel.Writer.TryWrite(NewItem(busyEvent)).Should().BeTrue();
         }
 
         for (var i = 0; i < 5; i++)
         {
-            channel.Writer.TryWrite(NewRequest(quietEvent)).Should().BeTrue();
+            channel.Writer.TryWrite(NewItem(quietEvent)).Should().BeTrue();
         }
 
         await worker.StartAsync(CancellationToken.None);
@@ -86,7 +86,7 @@ public class ReservationProcessingWorkerTests
         // no limita artificialmente la concurrencia observada.
         for (var i = 0; i < 20; i++)
         {
-            channel.Writer.TryWrite(NewRequest(Guid.NewGuid())).Should().BeTrue();
+            channel.Writer.TryWrite(NewItem(Guid.NewGuid())).Should().BeTrue();
         }
 
         await worker.StartAsync(CancellationToken.None);
@@ -120,7 +120,7 @@ public class ReservationProcessingWorkerTests
             Options.Create(new ReservationProcessingOptions { MaxConcurrency = 1, DrainTimeout = TimeSpan.FromSeconds(5) }),
             NullLogger<ReservationProcessingWorker>.Instance);
 
-        channel.Writer.TryWrite(NewRequest(Guid.NewGuid())).Should().BeTrue();
+        channel.Writer.TryWrite(NewItem(Guid.NewGuid())).Should().BeTrue();
 
         await worker.StartAsync(CancellationToken.None);
         await Polling.UntilAsync(() => processor.ProcessedOrder.Count == 1, TimeSpan.FromSeconds(5));
@@ -151,6 +151,6 @@ public class ReservationProcessingWorkerTests
         act.Should().Throw<ArgumentOutOfRangeException>();
     }
 
-    private static ReservationRequest NewRequest(Guid eventId) =>
-        new(Guid.NewGuid(), eventId, Guid.NewGuid(), 1, DateTimeOffset.UtcNow);
+    private static ReservationIngestItem NewItem(Guid eventId) =>
+        new(new ReservationRequest(Guid.NewGuid(), eventId, Guid.NewGuid(), 1, DateTimeOffset.UtcNow), default);
 }
