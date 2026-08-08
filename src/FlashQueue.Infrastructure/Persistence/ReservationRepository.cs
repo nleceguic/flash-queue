@@ -1,6 +1,7 @@
 using Dapper;
 using FlashQueue.Domain.Entities;
 using FlashQueue.Domain.Exceptions;
+using FlashQueue.Infrastructure.Chaos;
 using FlashQueue.Infrastructure.Resilience;
 using Npgsql;
 using Polly;
@@ -21,15 +22,19 @@ public sealed class ReservationRepository
     private readonly NpgsqlDataSource _dataSource;
     private readonly TimeProvider _timeProvider;
     private readonly ReservationRepositoryOptions _options;
+    private readonly IChaosInjector _chaosInjector;
     private readonly ResiliencePipeline<Reservation> _transientFaultPipeline;
 
-    public ReservationRepository(NpgsqlDataSource dataSource, TimeProvider timeProvider, ReservationRepositoryOptions options)
+    public ReservationRepository(
+        NpgsqlDataSource dataSource, TimeProvider timeProvider, ReservationRepositoryOptions options, IChaosInjector chaosInjector)
     {
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(chaosInjector);
 
         _dataSource = dataSource;
         _timeProvider = timeProvider;
         _options = options;
+        _chaosInjector = chaosInjector;
         _transientFaultPipeline = PostgresResilience.BuildTransientFaultPipeline<Reservation>(options);
     }
 
@@ -48,6 +53,12 @@ public sealed class ReservationRepository
 
     private async Task<Reservation> ReserveCoreAsync(ReservationRequest request, CancellationToken cancellationToken)
     {
+        // Con el modo caos desactivado esto resuelve a NullChaosInjector: una llamada virtual a un
+        // método que solo devuelve Task.CompletedTask, sin ningún condicional aquí. Dentro del
+        // pipeline de reintento (ReserveAsync): cada reintento vuelve a pasar por aquí, así que un
+        // fallo inyectado se comporta igual que un fallo transitorio real de la conexión.
+        await _chaosInjector.BeforePostgresCallAsync(cancellationToken);
+
         await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 

@@ -1,4 +1,5 @@
 using FlashQueue.Application.Processing;
+using FlashQueue.Infrastructure.Chaos;
 using FlashQueue.Infrastructure.Messaging;
 using FlashQueue.Infrastructure.Persistence;
 using Microsoft.Extensions.Configuration;
@@ -21,12 +22,15 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddNpgsqlDataSource(connectionString);
         services.TryAddSingleton(TimeProvider.System);
 
+        services.AddChaos(configuration);
+
         services.Configure<ReservationRepositoryOptions>(
             configuration.GetSection(ReservationRepositoryOptions.SectionName));
         services.AddSingleton(sp => new ReservationRepository(
             sp.GetRequiredService<NpgsqlDataSource>(),
             sp.GetRequiredService<TimeProvider>(),
-            sp.GetRequiredService<IOptions<ReservationRepositoryOptions>>().Value));
+            sp.GetRequiredService<IOptions<ReservationRepositoryOptions>>().Value,
+            sp.GetRequiredService<IChaosInjector>()));
 
         services.AddSingleton<SchemaMigrator>();
         services.AddSingleton<IReservationProcessor, PostgresReservationProcessor>();

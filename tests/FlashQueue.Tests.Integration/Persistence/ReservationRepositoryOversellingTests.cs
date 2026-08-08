@@ -1,5 +1,6 @@
 using Dapper;
 using FlashQueue.Domain.Entities;
+using FlashQueue.Infrastructure.Chaos;
 using FlashQueue.Infrastructure.Persistence;
 using FluentAssertions;
 using Npgsql;
@@ -56,11 +57,15 @@ public sealed class ReservationRepositoryOversellingTests : IAsyncLifetime
                 new { Id = eventId, Name = "Concierto de prueba (overselling)", TotalStock = totalStock });
         }
 
-        var repository = new ReservationRepository(_dataSource, TimeProvider.System, new ReservationRepositoryOptions
-        {
-            LockAcquisitionTimeout = TimeSpan.FromMinutes(2),
-            LockRetryDelay = TimeSpan.FromMilliseconds(2),
-        });
+        var repository = new ReservationRepository(
+            _dataSource,
+            TimeProvider.System,
+            new ReservationRepositoryOptions
+            {
+                LockAcquisitionTimeout = TimeSpan.FromMinutes(2),
+                LockRetryDelay = TimeSpan.FromMilliseconds(2),
+            },
+            new NullChaosInjector());
 
         // Admite las 20.000 peticiones concurrentemente, pero acota cuántas están realmente
         // en vuelo (y por tanto cuántas conexiones Npgsql abiertas a la vez) al tamaño del

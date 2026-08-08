@@ -1,3 +1,4 @@
+using FlashQueue.Infrastructure.Chaos;
 using MassTransit;
 
 namespace FlashQueue.Infrastructure.Messaging;
@@ -9,16 +10,24 @@ namespace FlashQueue.Infrastructure.Messaging;
 /// aquí — <see cref="PostgresReservationProcessor"/> publica fuera de cualquier consume context,
 /// disparado por <c>ReservationProcessingWorker</c>, no por un mensaje recibido.
 /// </summary>
-public sealed class ReservationEventPublisher(IBus bus, RabbitMqPublishResiliencePipelineProvider resilienceProvider)
+public sealed class ReservationEventPublisher(
+    IBus bus, RabbitMqPublishResiliencePipelineProvider resilienceProvider, IChaosInjector chaosInjector)
     : IReservationEventPublisher
 {
     public Task PublishAsync<T>(T message, CancellationToken cancellationToken) where T : class
     {
         ArgumentNullException.ThrowIfNull(message);
 
+        // La inyección de caos vive DENTRO del delegado que ejecuta el pipeline: un fallo
+        // artificial cuenta como un fallo real de cara al circuit breaker (y el timeout también
+        // se aplica a la latencia artificial, igual que a una publicación real lenta).
         return resilienceProvider.Pipeline.ExecuteAsync(
-            static (state, ct) => new ValueTask(state.Bus.Publish(state.Message, ct)),
-            (Bus: bus, Message: message),
+            static async (state, ct) =>
+            {
+                await state.ChaosInjector.BeforeRabbitMqPublishAsync(ct);
+                await state.Bus.Publish(state.Message, ct);
+            },
+            (Bus: bus, Message: message, ChaosInjector: chaosInjector),
             cancellationToken).AsTask();
     }
 }

@@ -1,4 +1,5 @@
 using FlashQueue.Contracts.Events;
+using FlashQueue.Infrastructure.Chaos;
 using FlashQueue.Infrastructure.Messaging;
 using FluentAssertions;
 using Microsoft.Extensions.Options;
@@ -29,7 +30,7 @@ public class ReservationEventPublisherTests
             PublishTimeout = TimeSpan.FromSeconds(2),
         });
         var endpoint = new FakeBus(_ => throw new InvalidOperationException("broker inalcanzable (simulado)"));
-        var publisher = new ReservationEventPublisher(endpoint, provider);
+        var publisher = new ReservationEventPublisher(endpoint, provider, new NullChaosInjector());
 
         for (var i = 0; i < consecutiveFailuresBeforeBreaking; i++)
         {
@@ -68,7 +69,7 @@ public class ReservationEventPublisherTests
             // Falla salvo en la 5ª llamada: nunca hay 5 fallos SEGUIDOS.
             return callCount == 5 ? Task.CompletedTask : throw new InvalidOperationException("fallo simulado");
         });
-        var publisher = new ReservationEventPublisher(endpoint, provider);
+        var publisher = new ReservationEventPublisher(endpoint, provider, new NullChaosInjector());
 
         for (var i = 0; i < 8; i++)
         {
@@ -97,7 +98,7 @@ public class ReservationEventPublisherTests
             PublishTimeout = TimeSpan.FromMilliseconds(200),
         });
         var endpoint = new FakeBus(async ct => await Task.Delay(TimeSpan.FromSeconds(10), ct));
-        var publisher = new ReservationEventPublisher(endpoint, provider);
+        var publisher = new ReservationEventPublisher(endpoint, provider, new NullChaosInjector());
 
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         var act = () => publisher.PublishAsync(Message, CancellationToken.None);
