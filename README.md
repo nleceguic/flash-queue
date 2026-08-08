@@ -1,5 +1,7 @@
 # FlashQueue
 
+[![CI](https://github.com/nleceguic/flash-queue/actions/workflows/ci.yml/badge.svg)](https://github.com/nleceguic/flash-queue/actions/workflows/ci.yml)
+
 FlashQueue es un motor de reservas para eventos con stock limitado
 (entradas, mesas) que garantiza **cero overselling** bajo picos de miles
 de peticiones concurrentes — el problema clásico de un "drop" de
