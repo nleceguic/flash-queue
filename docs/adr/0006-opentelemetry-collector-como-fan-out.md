@@ -1,7 +1,12 @@
 # ADR 0006: Instrumentación con OpenTelemetry — propagación de traza por el channel y Collector como fan-out
 
 - **Fecha**: 2026-08-07
-- **Estado**: Aceptada
+- **Estado**: Aceptada. Ambas decisiones de este ADR (propagación de traza por el item del
+  channel, Collector como fan-out) siguen vigentes sin cambios — un `Channel<T>` sigue sin
+  propagar `Activity.Current` esté o no en el mismo proceso que su lector. Lo que sí queda
+  superado es el dato de contexto mencionado más abajo ("cada proceso tiene su propia instancia de
+  `ReservationIngestChannel`"): desde [ADR 0013](0013-api-y-workers-no-comparten-el-channel-de-ingesta.md)
+  vuelve a haber una única instancia por sistema, no una por proceso.
 
 ## Contexto
 

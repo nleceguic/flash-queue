@@ -4,18 +4,47 @@ using System.Net.Http.Json;
 using FlashQueue.Api.Reservations;
 using FlashQueue.Application.Ingestion;
 using FlashQueue.Tests.Integration.Support;
+using FlashQueue.Workers;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Testcontainers.PostgreSql;
+using Testcontainers.RabbitMq;
 
 namespace FlashQueue.Tests.Integration.Reservations;
 
-public sealed class ReservationsBackpressureTests : IClassFixture<WebApplicationFactory<Program>>
+/// <summary>Retira el worker real del host para observar el backpressure con un lector artificial controlado.</summary>
+public sealed class ReservationsBackpressureTests : IAsyncLifetime
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
+        .WithDatabase("flashqueue")
+        .WithUsername("flashqueue")
+        .WithPassword("flashqueue")
+        .Build();
 
-    public ReservationsBackpressureTests(WebApplicationFactory<Program> factory) => _factory = factory;
+    private readonly RabbitMqContainer _rabbitMq = new RabbitMqBuilder("rabbitmq:3.13-alpine")
+        .WithUsername("flashqueue")
+        .WithPassword("flashqueue")
+        .Build();
+
+    private WebApplicationFactory<Program> _factory = null!;
+
+    public async Task InitializeAsync()
+    {
+        await Task.WhenAll(_postgres.StartAsync(), _rabbitMq.StartAsync());
+
+        InfrastructureEnvironmentVariables.SetFor(_postgres, _rabbitMq);
+        _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            builder.ConfigureServices(services => HostedServiceRemoval.Remove<ReservationProcessingWorker>(services)));
+    }
+
+    public async Task DisposeAsync()
+    {
+        await _factory.DisposeAsync();
+        InfrastructureEnvironmentVariables.Clear();
+        await Task.WhenAll(_postgres.DisposeAsync().AsTask(), _rabbitMq.DisposeAsync().AsTask());
+    }
 
     [Fact]
     public async Task PostReservations_WhenChannelIsFull_WaitsInsteadOfFailing()

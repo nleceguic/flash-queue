@@ -1,7 +1,11 @@
 # ADR 0008: Test de carga con k6 y `GET /events/{id}/status`
 
 - **Fecha**: 2026-08-07
-- **Estado**: Aceptada
+- **Estado**: Aceptada. Las Decisiones 1 y 2 (endpoint en Workers, `shared-iterations` para el
+  pico) siguen vigentes. La Decisión 3 (el hallazgo empírico de bloqueo indefinido del channel) es
+  ahora historia resuelta — la causa raíz que documenta queda diagnosticada y corregida en
+  [ADR 0013](0013-api-y-workers-no-comparten-el-channel-de-ingesta.md); las cifras de esta página
+  son del sistema *antes* de esa corrección.
 
 ## Contexto
 

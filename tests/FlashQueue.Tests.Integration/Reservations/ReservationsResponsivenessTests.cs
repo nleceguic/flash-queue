@@ -2,17 +2,47 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
 using FlashQueue.Api.Reservations;
+using FlashQueue.Tests.Integration.Support;
+using FlashQueue.Workers;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Testcontainers.PostgreSql;
+using Testcontainers.RabbitMq;
 
 namespace FlashQueue.Tests.Integration.Reservations;
 
-public sealed class ReservationsResponsivenessTests : IClassFixture<WebApplicationFactory<Program>>
+/// <summary>Retira el worker real para que no drene el channel saturado antes de medir la respuesta de /health.</summary>
+public sealed class ReservationsResponsivenessTests : IAsyncLifetime
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
+        .WithDatabase("flashqueue")
+        .WithUsername("flashqueue")
+        .WithPassword("flashqueue")
+        .Build();
 
-    public ReservationsResponsivenessTests(WebApplicationFactory<Program> factory) => _factory = factory;
+    private readonly RabbitMqContainer _rabbitMq = new RabbitMqBuilder("rabbitmq:3.13-alpine")
+        .WithUsername("flashqueue")
+        .WithPassword("flashqueue")
+        .Build();
+
+    private WebApplicationFactory<Program> _factory = null!;
+
+    public async Task InitializeAsync()
+    {
+        await Task.WhenAll(_postgres.StartAsync(), _rabbitMq.StartAsync());
+
+        InfrastructureEnvironmentVariables.SetFor(_postgres, _rabbitMq);
+        _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            builder.ConfigureServices(services => HostedServiceRemoval.Remove<ReservationProcessingWorker>(services)));
+    }
+
+    public async Task DisposeAsync()
+    {
+        await _factory.DisposeAsync();
+        InfrastructureEnvironmentVariables.Clear();
+        await Task.WhenAll(_postgres.DisposeAsync().AsTask(), _rabbitMq.DisposeAsync().AsTask());
+    }
 
     [Fact]
     public async Task GetHealth_StaysResponsive_WhileIngestChannelIsSaturated()
@@ -25,8 +55,7 @@ public sealed class ReservationsResponsivenessTests : IClassFixture<WebApplicati
         using var writesCts = new CancellationTokenSource();
         var eventId = Guid.NewGuid();
 
-        // Calienta el host (JIT, construcción del contenedor de DI, primera conexión) antes de
-        // medir, para que el arranque en frío de WebApplicationFactory no contamine la medición.
+        // Calienta el host antes de medir para no contaminar la medición con el arranque en frío.
         using (var warmup = await client.GetAsync("/health"))
         {
             warmup.StatusCode.Should().Be(HttpStatusCode.OK);

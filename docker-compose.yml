@@ -1,10 +1,6 @@
-# Levanta TODO el sistema FlashQueue con un solo comando: `docker compose up -d`.
-#
-# Arrancan por defecto (sin profile): Postgres, RabbitMQ, FlashQueue.Api, FlashQueue.Workers y los
-# tres FlashQueue.Consumers.* — un sistema end-to-end funcional. El stack de observabilidad
-# (Collector + Tempo + Prometheus + Grafana) es opcional y vive detrás del profile
-# "observability" (`docker compose --profile observability up -d`) porque tiene un ciclo de vida
-# propio: no siempre hace falta levantarlo para probar el sistema. Ver README-DOCKER.md.
+# `docker compose up -d` levanta Postgres, RabbitMQ, "workers" (ingesta + procesamiento, ADR 0013)
+# y los tres Consumers.*. La observabilidad es opcional: `docker compose --profile observability up -d`.
+# Ver README-DOCKER.md.
 services:
   # ---------------------------------------------------------------------------------------------
   # Infraestructura
@@ -42,32 +38,11 @@ services:
       retries: 10
 
   # ---------------------------------------------------------------------------------------------
-  # Aplicación — todas comparten el Dockerfile genérico de la raíz (ver ese archivo), solo cambia
-  # qué proyecto publican (PROJECT_PATH) y qué ensamblado arrancan (ASSEMBLY_NAME).
+  # Aplicación — todas comparten el Dockerfile genérico de la raíz, solo cambia qué proyecto
+  # publican (PROJECT_PATH) y qué ensamblado arrancan (ASSEMBLY_NAME).
   # ---------------------------------------------------------------------------------------------
-  api:
-    build:
-      context: .
-      args:
-        PROJECT_PATH: src/FlashQueue.Api/FlashQueue.Api.csproj
-        ASSEMBLY_NAME: FlashQueue.Api
-    environment:
-      DOTNET_ENVIRONMENT: Development
-      Observability__OtlpEndpoint: http://otel-collector:4317
-    ports:
-      - "5257:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
-
+  # Desde ADR 0013, un único servicio hospeda la ingesta HTTP y ReservationProcessingWorker en el
+  # mismo proceso, compartiendo la misma instancia de ReservationIngestChannel.
   workers:
     build:
       context: .
@@ -86,6 +61,7 @@ services:
       # en el shell antes de "docker compose up" — ver README-DOCKER.md.
       CHAOS_MODE: ${CHAOS_MODE:-false}
     ports:
+      - "5257:8080" # POST /events/{eventId}/reservations
       - "5280:8080" # /health/dependencies expone el estado del circuit breaker de RabbitMQ
     depends_on:
       postgres:
@@ -178,11 +154,9 @@ services:
       start_period: 15s
 
   # ---------------------------------------------------------------------------------------------
-  # Observabilidad (profile "observability", opcional) — Collector + Tempo (trazas) + Prometheus
-  # (métricas) + Grafana (dashboards). Ver docs/adr/0006-opentelemetry-collector-como-fan-out.md.
-  # La app apunta su único endpoint OTLP configurable (Observability__OtlpEndpoint, ya fijado
-  # arriba en api/workers) al Collector; si este profile no está activo, esas exportaciones
-  # simplemente fallan en segundo plano sin afectar a la app (el exporter OTLP es best-effort).
+  # Observabilidad (profile "observability", opcional) — Collector + Tempo + Prometheus + Grafana.
+  # Si este profile no está activo, el exporter OTLP de la app simplemente falla en segundo plano
+  # sin afectarla (es best-effort). Ver docs/adr/0006-opentelemetry-collector-como-fan-out.md.
   # ---------------------------------------------------------------------------------------------
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.102.1

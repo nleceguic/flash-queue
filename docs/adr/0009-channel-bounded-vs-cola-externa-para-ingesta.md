@@ -1,7 +1,10 @@
 # ADR 0009: `Channel<T>` bounded en memoria vs. cola externa para la ingesta
 
 - **Fecha**: 2026-08-07
-- **Estado**: Aceptada
+- **Estado**: Aceptada. La decisión en sí (`Channel<T>` en memoria frente a cola externa) sigue
+  vigente sin cambios. La consecuencia de "cada proceso tiene su propio channel" que se documentaba
+  más abajo queda resuelta por [ADR 0013](0013-api-y-workers-no-comparten-el-channel-de-ingesta.md):
+  Api y Workers vuelven a compartir una única instancia, como en el diseño original de esta ADR.
 
 ## Contexto
 
@@ -35,9 +38,13 @@ red/serialización), y usa directamente las primitivas de concurrencia de
 
 ## Consecuencias
 
-- El channel vive en memoria de un único proceso: si `FlashQueue.Api` cae,
-  las peticiones ya encoladas (no persistidas todavía) se pierden.
-  Aceptable dado el argumento de reintento del cliente.
-- Consecuencia real, no hipotética: `Api` y `Workers`, al ser procesos
-  separados, tienen cada uno su **propio** channel — el test de carga con
-  k6 confirmó empíricamente el efecto (ver ADR 0006 y 0008).
+- El channel vive en memoria de un único proceso: si ese proceso cae, las
+  peticiones ya encoladas (no persistidas todavía) se pierden. Aceptable
+  dado el argumento de reintento del cliente.
+- **Histórico, ya corregido**: entre la dockerización del sistema (fase 10)
+  y [ADR 0013](0013-api-y-workers-no-comparten-el-channel-de-ingesta.md),
+  `Api` y `Workers` se desplegaron como procesos separados, cada uno con
+  su **propio** channel sin relación entre sí — el test de carga con k6
+  confirmó empíricamente el efecto (ver ADR 0006 y 0008). ADR 0013 lo
+  corrige: ambos vuelven a compartir la única instancia que esta decisión
+  siempre asumió.

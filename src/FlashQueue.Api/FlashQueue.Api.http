@@ -1,6 +1,0 @@
-@FlashQueue.Api_HostAddress = http://localhost:5257
-
-GET {{FlashQueue.Api_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###

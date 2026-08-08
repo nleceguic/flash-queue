@@ -2,7 +2,11 @@ using System.Diagnostics;
 using FlashQueue.Application.Ingestion;
 using FlashQueue.Application.Observability;
 using FlashQueue.Domain.Entities;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Routing;
 
 namespace FlashQueue.Api.Reservations;
 
@@ -51,10 +55,8 @@ public static class ReservationsEndpoints
         var reservationRequest = new ReservationRequest(
             Guid.NewGuid(), eventId, body.UserId, body.Quantity, timeProvider.GetUtcNow());
 
-        // Span propio (hijo del span de ASP.NET Core auto-instrumentado de esta petición) que
-        // marca el punto exacto de encolado. Su contexto viaja con el item a través del channel
-        // (ver ReservationIngestItem) para que ReservationProcessingWorker pueda reconectar la
-        // traza al otro lado del boundary asíncrono.
+        // Su contexto viaja con el item a través del channel para que el worker pueda reconectar
+        // la traza al otro lado del boundary asíncrono.
         using var activity = FlashQueueDiagnostics.ActivitySource.StartActivity(
             "reservation.enqueue", ActivityKind.Producer);
         activity?.SetTag("reservation.id", reservationRequest.Id);

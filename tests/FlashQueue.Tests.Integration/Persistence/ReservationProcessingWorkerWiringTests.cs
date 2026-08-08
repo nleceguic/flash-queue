@@ -16,15 +16,7 @@ using Testcontainers.RabbitMq;
 
 namespace FlashQueue.Tests.Integration.Persistence;
 
-/// <summary>
-/// Prueba el cableado real (requisito 3 del encargo): que <see cref="ReservationProcessingWorker"/>
-/// consume <see cref="ReservationIngestChannel"/> y cada item termina persistido a través del
-/// <see cref="ReservationRepository"/> real, no del placeholder de logging. Complementa —no
-/// sustituye— a <see cref="ReservationRepositoryOversellingTests"/>, que es la prueba rigurosa
-/// de no-overselling a nivel de repositorio. Necesita también un RabbitMQ real porque
-/// AddInfrastructure ya registra la publicación de eventos (ver
-/// <see cref="ReservationEventFanoutTests"/> para la prueba del fanout en sí).
-/// </summary>
+/// <summary>Cableado real: el worker consume el channel y persiste vía <see cref="ReservationRepository"/>.</summary>
 public sealed class ReservationProcessingWorkerWiringTests : IAsyncLifetime
 {
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")

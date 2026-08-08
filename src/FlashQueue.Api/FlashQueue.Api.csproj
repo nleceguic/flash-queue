@@ -1,16 +1,18 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.9" />
+    <!-- Librería de endpoints minimal API + rate limiting, sin Program.cs propio: la hospeda
+         FlashQueue.Workers en un único proceso (ver ADR 0013). FrameworkReference explícita
+         porque este proyecto ya no usa el SDK Web, que la traía implícita. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\FlashQueue.Application\FlashQueue.Application.csproj" />
-    <ProjectReference Include="..\FlashQueue.Infrastructure\FlashQueue.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

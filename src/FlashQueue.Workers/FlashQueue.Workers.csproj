@@ -6,17 +6,20 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- WebApplication/Minimal API para exponer /health/dependencies (ver ADR 0004): el estado
-         del circuit breaker de RabbitMQ necesita una superficie HTTP, aunque el trabajo real de
-         este servicio sea consumir el channel de ingesta, no servir peticiones. -->
+    <!-- WebApplication/Minimal API: expone /health/dependencies (ADR 0004), /events/{id}/status
+         (ADR 0008) y, desde ADR 0013, también la ingesta HTTP de FlashQueue.Api en el mismo
+         proceso — un único ReservationIngestChannel compartido de verdad entre el productor
+         (endpoint) y el consumidor (ReservationProcessingWorker, más abajo). -->
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.9" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.10" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\FlashQueue.Api\FlashQueue.Api.csproj" />
     <ProjectReference Include="..\FlashQueue.Application\FlashQueue.Application.csproj" />
     <ProjectReference Include="..\FlashQueue.Infrastructure\FlashQueue.Infrastructure.csproj" />
     <ProjectReference Include="..\FlashQueue.Contracts\FlashQueue.Contracts.csproj" />

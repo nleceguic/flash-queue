@@ -18,8 +18,7 @@ Esto construye y arranca, en orden (Postgres y RabbitMQ tienen que estar
 |----------------------------|:-----------:|--------|
 | `postgres`                 | `5432`      | Base de datos |
 | `rabbitmq`                 | `5672` / `15672` | Broker AMQP / **panel de administración** (`http://localhost:15672`, usuario y contraseña `flashqueue`) |
-| `api`                      | `5257`      | `FlashQueue.Api` — `POST /events/{eventId}/reservations` |
-| `workers`                  | `5280`      | `FlashQueue.Workers` — motor de reserva + `GET /health/dependencies` (estado del circuit breaker de RabbitMQ) |
+| `workers`                  | `5257` / `5280` | Proceso único (ver [ADR 0013](docs/adr/0013-api-y-workers-no-comparten-el-channel-de-ingesta.md)): `POST /events/{eventId}/reservations` (`5257`) + motor de reserva + `GET /health/dependencies` (`5280`, estado del circuit breaker de RabbitMQ) |
 | `consumers-payments`       | `5281`      | Stub de Pagos |
 | `consumers-notifications`  | `5282`      | Stub de Notificaciones |
 | `consumers-analytics`      | `5283`      | Stub de Analítica |
@@ -32,7 +31,7 @@ docker compose ps
 
 Cada servicio de la aplicación expone `/health` (o `/health/dependencies` en
 `workers`), así que `docker compose ps` debería mostrar `healthy` para los
-siete servicios una vez arrancan del todo (el primer arranque tarda un poco
+seis servicios una vez arrancan del todo (el primer arranque tarda un poco
 más: `workers` aplica el esquema SQL antes de aceptar tráfico).
 
 Probar el flujo (el evento tiene que existir en la tabla `events` — insértalo
@@ -106,7 +105,7 @@ Esto arranca el sistema completo (si no estaba ya arrancado) **más**:
 
 | Servicio         | Puerto host | Qué es |
 |-------------------|:-----------:|--------|
-| `otel-collector`  | `4317` / `4318` | Receptor OTLP (gRPC/HTTP) — a esto exportan `api` y `workers` |
+| `otel-collector`  | `4317` / `4318` | Receptor OTLP (gRPC/HTTP) — a esto exporta `workers` |
 | `tempo`           | `3200`      | Backend de trazas |
 | `prometheus`      | `9090`      | Backend de métricas |
 | `grafana`         | `3000`      | `http://localhost:3000`, sin login (modo anónimo), dashboard **FlashQueue - Overview** ya provisionado |
@@ -126,10 +125,12 @@ docker compose --profile observability down
 
 ## Notas
 
-- `api` y `workers` son procesos **separados**, cada uno con su propio
-  canal de ingesta en memoria — ver
-  [`docs/adr/0006-opentelemetry-collector-como-fan-out.md`](docs/adr/0006-opentelemetry-collector-como-fan-out.md).
-  Es una limitación conocida del diseño actual, no algo específico de Docker.
+- Hasta [ADR 0013](docs/adr/0013-api-y-workers-no-comparten-el-channel-de-ingesta.md),
+  `api` y `workers` corrían como procesos **separados**, cada uno con su
+  propio canal de ingesta en memoria sin relación entre sí — una reserva
+  aceptada por `api` nunca llegaba a persistirse. Ese ADR documenta el
+  hallazgo y la corrección: ahora es un único servicio (`workers`) que
+  comparte de verdad el mismo channel entre el endpoint y el worker.
 - Reconstruir imágenes tras cambiar código (`docker compose up` no reconstruye
   solo porque el código cambió):
 
