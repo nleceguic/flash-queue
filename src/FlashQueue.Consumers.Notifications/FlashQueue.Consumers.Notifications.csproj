@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <UserSecretsId>dotnet-FlashQueue.Consumers.Notifications-8a1d2c3e-4f5b-4a6c-9d7e-1b2c3d4e5f60</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FlashQueue.Contracts\FlashQueue.Contracts.csproj" />
+    <ProjectReference Include="..\FlashQueue.Infrastructure\FlashQueue.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

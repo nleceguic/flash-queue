@@ -12,6 +12,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Npgsql;
 using Testcontainers.PostgreSql;
+using Testcontainers.RabbitMq;
 
 namespace FlashQueue.Tests.Integration.Persistence;
 
@@ -20,7 +21,9 @@ namespace FlashQueue.Tests.Integration.Persistence;
 /// consume <see cref="ReservationIngestChannel"/> y cada item termina persistido a través del
 /// <see cref="ReservationRepository"/> real, no del placeholder de logging. Complementa —no
 /// sustituye— a <see cref="ReservationRepositoryOversellingTests"/>, que es la prueba rigurosa
-/// de no-overselling a nivel de repositorio.
+/// de no-overselling a nivel de repositorio. Necesita también un RabbitMQ real porque
+/// AddInfrastructure ya registra la publicación de eventos (ver
+/// <see cref="ReservationEventFanoutTests"/> para la prueba del fanout en sí).
 /// </summary>
 public sealed class ReservationProcessingWorkerWiringTests : IAsyncLifetime
 {
@@ -30,12 +33,17 @@ public sealed class ReservationProcessingWorkerWiringTests : IAsyncLifetime
         .WithPassword("flashqueue")
         .Build();
 
+    private readonly RabbitMqContainer _rabbitMq = new RabbitMqBuilder("rabbitmq:3.13-alpine")
+        .WithUsername("flashqueue")
+        .WithPassword("flashqueue")
+        .Build();
+
     private IHost _host = null!;
     private NpgsqlDataSource _dataSource = null!;
 
     public async Task InitializeAsync()
     {
-        await _postgres.StartAsync();
+        await Task.WhenAll(_postgres.StartAsync(), _rabbitMq.StartAsync());
 
         _dataSource = NpgsqlDataSource.Create(_postgres.GetConnectionString());
         await new SchemaMigrator(_dataSource).EnsureSchemaAsync(CancellationToken.None);
@@ -44,6 +52,11 @@ public sealed class ReservationProcessingWorkerWiringTests : IAsyncLifetime
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["ConnectionStrings:FlashQueueDb"] = _postgres.GetConnectionString(),
+            ["RabbitMq:Host"] = _rabbitMq.Hostname,
+            ["RabbitMq:Port"] = _rabbitMq.GetMappedPublicPort(5672).ToString(),
+            ["RabbitMq:VirtualHost"] = "/",
+            ["RabbitMq:Username"] = "flashqueue",
+            ["RabbitMq:Password"] = "flashqueue",
         });
 
         builder.Services.AddSingleton(new ReservationIngestChannel(new ReservationIngestOptions()));
@@ -61,7 +74,7 @@ public sealed class ReservationProcessingWorkerWiringTests : IAsyncLifetime
         await _host.StopAsync();
         _host.Dispose();
         await _dataSource.DisposeAsync();
-        await _postgres.DisposeAsync();
+        await Task.WhenAll(_postgres.DisposeAsync().AsTask(), _rabbitMq.DisposeAsync().AsTask());
     }
 
     [Fact]

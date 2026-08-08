@@ -1,4 +1,5 @@
 using FlashQueue.Application.Processing;
+using FlashQueue.Infrastructure.Messaging;
 using FlashQueue.Infrastructure.Persistence;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -29,6 +30,11 @@ public static class InfrastructureServiceCollectionExtensions
 
         services.AddSingleton<SchemaMigrator>();
         services.AddSingleton<IReservationProcessor, PostgresReservationProcessor>();
+
+        // FlashQueue.Workers solo publica (ver PostgresReservationProcessor), nunca consume: no
+        // se pasa configureConsumers ni serviceName.
+        services.AddRabbitMqMessaging(configuration);
+        services.AddSingleton<IReservationEventPublisher, ReservationEventPublisher>();
 
         return services;
     }
