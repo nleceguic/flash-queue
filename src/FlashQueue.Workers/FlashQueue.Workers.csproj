@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <UserSecretsId>dotnet-FlashQueue.Workers-b5431619-468f-47f6-b61f-9a023aebdc37</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FlashQueue.Application\FlashQueue.Application.csproj" />
+    <ProjectReference Include="..\FlashQueue.Infrastructure\FlashQueue.Infrastructure.csproj" />
+    <ProjectReference Include="..\FlashQueue.Contracts\FlashQueue.Contracts.csproj" />
+  </ItemGroup>
+</Project>

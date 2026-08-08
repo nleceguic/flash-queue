@@ -20,6 +20,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\FlashQueue.Domain\FlashQueue.Domain.csproj" />
     <ProjectReference Include="..\..\src\FlashQueue.Application\FlashQueue.Application.csproj" />
+    <ProjectReference Include="..\..\src\FlashQueue.Workers\FlashQueue.Workers.csproj" />
   </ItemGroup>
 
 </Project>
