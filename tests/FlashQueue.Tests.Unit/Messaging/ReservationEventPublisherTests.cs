@@ -9,10 +9,9 @@ using Polly.Timeout;
 namespace FlashQueue.Tests.Unit.Messaging;
 
 /// <summary>
-/// Verifica, con un <see cref="MassTransit.IBus"/> fake que falla N veces (sin RabbitMQ real),
-/// que <see cref="ReservationEventPublisher"/> abre el circuito tras los fallos consecutivos
-/// configurados, deja de invocar realmente el endpoint mientras está abierto (fail-fast) y
-/// aplica el timeout por intento. Ver docs/adr/0004-polly-retry-postgres-circuit-breaker-rabbitmq.md.
+/// Con un <see cref="MassTransit.IBus"/> fake: <see cref="ReservationEventPublisher"/> abre el
+/// circuito tras los fallos consecutivos configurados, falla rápido mientras está abierto, y
+/// aplica el timeout por intento.
 /// </summary>
 public class ReservationEventPublisherTests
 {
@@ -42,8 +41,6 @@ public class ReservationEventPublisherTests
         endpoint.CallCount.Should().Be(consecutiveFailuresBeforeBreaking);
         provider.CircuitBreakerStateProvider.CircuitState.Should().Be(CircuitState.Open);
 
-        // Con el circuito abierto: falla al instante con BrokenCircuitException y NUNCA llega a
-        // invocar el endpoint real. Esta es la comprobación de fail-fast, no solo "también falla".
         var actAfterOpen = () => publisher.PublishAsync(Message, CancellationToken.None);
         await actAfterOpen.Should().ThrowAsync<BrokenCircuitException>();
 

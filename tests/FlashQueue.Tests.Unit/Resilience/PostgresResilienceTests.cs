@@ -6,12 +6,7 @@ using Npgsql;
 
 namespace FlashQueue.Tests.Unit.Resilience;
 
-/// <summary>
-/// Verifica, con fallos inyectados vía un delegado que falla N veces (sin Postgres real), que
-/// <see cref="PostgresResilience"/> reintenta solo fallos transitorios de conexión y nunca
-/// violaciones de constraint ni errores de validación. Ver
-/// docs/adr/0004-polly-retry-postgres-circuit-breaker-rabbitmq.md.
-/// </summary>
+/// <summary><see cref="PostgresResilience"/> reintenta solo fallos transitorios, nunca constraints ni validación.</summary>
 public class PostgresResilienceTests
 {
     [Theory]
@@ -124,10 +119,7 @@ public class PostgresResilienceTests
     private static PostgresException ValidationError(int attempt) =>
         new("dato inválido simulado", "ERROR", "ERROR", "22001");
 
-    /// <summary>
-    /// El "DbConnection fake que falla N veces": simula una operación contra Postgres que falla
-    /// las primeras <paramref name="failuresBeforeSuccess"/> veces y tiene éxito a partir de ahí.
-    /// </summary>
+    /// <summary>Falla las primeras <paramref name="failuresBeforeSuccess"/> veces, luego tiene éxito.</summary>
     private sealed class FailNTimesOperation(int failuresBeforeSuccess, Func<int, Exception> exceptionFactory)
     {
         public int Attempts { get; private set; }

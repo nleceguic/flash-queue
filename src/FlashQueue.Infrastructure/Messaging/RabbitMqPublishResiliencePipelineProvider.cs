@@ -5,10 +5,9 @@ using Polly.CircuitBreaker;
 namespace FlashQueue.Infrastructure.Messaging;
 
 /// <summary>
-/// Construye, una única vez, el pipeline de resiliencia (circuit breaker + timeout) que protege
-/// la publicación a RabbitMQ, y expone su <see cref="CircuitBreakerStateProvider"/> para que
-/// <c>/health/dependencies</c> pueda leer el estado del circuito sin acoplarse a Polly. Ver
-/// docs/adr/0004-polly-retry-postgres-circuit-breaker-rabbitmq.md.
+/// Pipeline de resiliencia (circuit breaker + timeout) para la publicación a RabbitMQ, con su
+/// <see cref="CircuitBreakerStateProvider"/> expuesto para que <c>/health/dependencies</c> lea
+/// el estado del circuito sin acoplarse a Polly.
 /// </summary>
 public sealed class RabbitMqPublishResiliencePipelineProvider
 {
@@ -19,15 +18,12 @@ public sealed class RabbitMqPublishResiliencePipelineProvider
 
         CircuitBreakerStateProvider = new CircuitBreakerStateProvider();
 
-        // Orden deliberado: el circuit breaker va FUERA del timeout. Así, con el circuito
-        // abierto, una llamada falla al instante (BrokenCircuitException) sin siquiera intentar
-        // publicar ni esperar los 2s del timeout interno.
+        // El circuit breaker va fuera del timeout: con el circuito abierto, falla al instante
+        // en vez de esperar el timeout interno.
         Pipeline = new ResiliencePipelineBuilder()
             .AddCircuitBreaker(new CircuitBreakerStrategyOptions
             {
-                // FailureRatio = 1.0 + MinimumThroughput = N emula "N fallos consecutivos": una
-                // sola publicación exitosa dentro de SamplingDuration hace que el ratio baje de
-                // 1.0 y el circuito no se abra (ver RabbitMqPublishResilienceOptions.SamplingDuration).
+                // FailureRatio 1.0 + MinimumThroughput = N emula "N fallos consecutivos".
                 FailureRatio = 1.0,
                 MinimumThroughput = value.ConsecutiveFailuresBeforeBreaking,
                 SamplingDuration = value.SamplingDuration,

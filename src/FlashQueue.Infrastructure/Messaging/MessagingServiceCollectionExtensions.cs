@@ -8,18 +8,8 @@ namespace FlashQueue.Infrastructure;
 
 public static class MessagingServiceCollectionExtensions
 {
-    /// <summary>
-    /// Configura MassTransit sobre RabbitMQ. El host se lee de la sección de configuración
-    /// "RabbitMq" (appsettings o variables de entorno, p. ej. <c>RabbitMq__Host</c>).
-    /// </summary>
-    /// <param name="serviceName">
-    /// Prefijo de cola por servicio (p. ej. "payments"). Necesario cuando varios procesos
-    /// distintos registran consumidores con el mismo nombre de tipo (cada
-    /// FlashQueue.Consumers.* tiene su propio <c>ReservationConfirmedConsumer</c>): sin prefijo,
-    /// el formateador de nombres de MassTransit generaría el mismo nombre de cola para los tres
-    /// servicios y, en vez de que cada uno reciba su propia copia del evento, competirían por los
-    /// mismos mensajes. FlashQueue.Workers no registra consumidores, así que no lo necesita.
-    /// </param>
+    /// <summary>Configura MassTransit sobre RabbitMQ, leyendo el host de la sección "RabbitMq".</summary>
+    /// <param name="serviceName">Prefijo de cola por servicio, para que los tres Consumers.* no compitan por la misma cola.</param>
     /// <param name="configureConsumers">Registro de consumidores propio de cada servicio.</param>
     public static IServiceCollection AddRabbitMqMessaging(
         this IServiceCollection services,
@@ -43,12 +33,8 @@ public static class MessagingServiceCollectionExtensions
                     host.Password(options.Password);
                 });
 
-                // Reintentos por defecto para todos los endpoints de recepción configurados más
-                // abajo (backoff exponencial con jitter implícito en la progresión). Cuando un
-                // mensaje agota los reintentos, el transporte de RabbitMQ de MassTransit lo mueve
-                // automáticamente a la cola dead-letter "<nombre-cola>_error" — no requiere
-                // configuración adicional, es el comportamiento por defecto del transporte una vez
-                // que el pipeline de reintentos se da por vencido.
+                // Backoff exponencial; agotados los reintentos, MassTransit mueve el mensaje a la
+                // cola dead-letter "<nombre-cola>_error" automáticamente.
                 cfg.UseMessageRetry(retry => retry.Exponential(
                     retryLimit: 3,
                     minInterval: TimeSpan.FromMilliseconds(200),

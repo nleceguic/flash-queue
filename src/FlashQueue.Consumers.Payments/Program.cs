@@ -3,9 +3,7 @@ using FlashQueue.Infrastructure;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 
-// WebApplication (no Host.CreateApplicationBuilder) solo para exponer /health: docker-compose.yml
-// necesita una superficie HTTP para el healthcheck de este servicio, aunque su trabajo real sea
-// consumir de RabbitMQ, no servir peticiones.
+// WebApplication solo para exponer /health; el trabajo real es consumir de RabbitMQ.
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRabbitMqMessaging(builder.Configuration, serviceName: "payments", configureConsumers: x =>

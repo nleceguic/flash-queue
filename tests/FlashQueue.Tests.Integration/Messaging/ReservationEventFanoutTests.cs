@@ -16,14 +16,7 @@ using Testcontainers.RabbitMq;
 
 namespace FlashQueue.Tests.Integration.Messaging;
 
-/// <summary>
-/// Prueba de extremo a extremo del requisito de mensajería (ver docs/adr/0003-masstransit-rabbitmq-para-eventos-de-dominio.md):
-/// contra un Postgres y un RabbitMQ reales (Testcontainers, no mocks), confirma una reserva a
-/// través del pipeline real (<see cref="ReservationRepository"/> + <see cref="PostgresReservationProcessor"/>)
-/// y comprueba que <c>ReservationConfirmed</c> llega, de forma independiente, a los tres
-/// consumidores reales de FlashQueue.Consumers.Payments/Notifications/Analytics — cada uno
-/// levantado como su propio <see cref="IHost"/>, exactamente como se despliegan en producción.
-/// </summary>
+/// <summary>Confirma una reserva por el pipeline real y comprueba que llega a los tres consumidores, cada uno como su propio <see cref="IHost"/>.</summary>
 public sealed class ReservationEventFanoutTests : IAsyncLifetime
 {
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
@@ -127,9 +120,7 @@ public sealed class ReservationEventFanoutTests : IAsyncLifetime
 
         var reservationId = request.Id.ToString();
 
-        // Se espera al mensaje de "completado" de cada consumidor (no al primero que aparezca):
-        // cada uno simula latencia con Task.Delay antes de terminar, así que un mensaje que solo
-        // contenga el id de la reserva podría ser el de "iniciando", no el de que ya terminó.
+        // Espera al mensaje de "completado", no al primero: cada consumidor simula latencia antes de terminar.
         await Polling.UntilAsync(
             () => _paymentsLogs.Messages.Any(m => m.Contains(reservationId) && m.Contains("Cobro simulado completado")),
             TimeSpan.FromSeconds(30));

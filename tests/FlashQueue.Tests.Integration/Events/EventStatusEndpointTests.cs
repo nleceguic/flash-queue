@@ -14,10 +14,7 @@ using Testcontainers.RabbitMq;
 
 namespace FlashQueue.Tests.Integration.Events;
 
-/// <summary>
-/// Prueba <c>GET /events/{eventId}/status</c> (ver load-tests/flashqueue-spike.js, que lo usa
-/// para verificar bajo carga que nunca se supera el stock disponible) contra un Postgres real.
-/// </summary>
+/// <summary>Prueba <c>GET /events/{eventId}/status</c> contra un Postgres real.</summary>
 public sealed class EventStatusEndpointTests : IAsyncLifetime
 {
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:16-alpine")
@@ -26,8 +23,7 @@ public sealed class EventStatusEndpointTests : IAsyncLifetime
         .WithPassword("flashqueue")
         .Build();
 
-    // AddInfrastructure también configura MassTransit/RabbitMQ (ver ReservationProcessingWorkerWiringTests
-    // para el porqué de necesitar un broker real aquí también, aunque este endpoint no lo use).
+    // AddInfrastructure también configura MassTransit; hace falta un broker real aunque este endpoint no lo use.
     private readonly RabbitMqContainer _rabbitMq = new RabbitMqBuilder("rabbitmq:3.13-alpine")
         .WithUsername("flashqueue")
         .WithPassword("flashqueue")
@@ -119,10 +115,8 @@ public sealed class EventStatusEndpointTests : IAsyncLifetime
     [Fact]
     public async Task GetEventStatus_NeverReportsReservedStockAboveTotalStock()
     {
-        // No es la prueba rigurosa de no-overselling (esa es ReservationRepositoryOversellingTests,
-        // 20.000 reservas concurrentes reales) — esto solo comprueba que el endpoint refleja
-        // fielmente la restricción ck_events_reserved_not_exceeding_total ya impuesta por el
-        // esquema, que es lo único que el check de k6 puede observar desde fuera del proceso.
+        // No es la prueba rigurosa de no-overselling (esa es ReservationRepositoryOversellingTests);
+        // solo comprueba que el endpoint refleja la restricción ya impuesta por el esquema.
         var eventId = Guid.NewGuid();
 
         await using (var connection = await _dataSource.OpenConnectionAsync())

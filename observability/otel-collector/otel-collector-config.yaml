@@ -1,7 +1,5 @@
-# Punto de entrada único de OTLP para toda la app (endpoint configurable en cada servicio,
-# Observability:OtlpEndpoint). Reparte cada señal a donde sabe entenderla: Tempo solo habla OTLP
-# de trazas, Prometheus solo acepta métricas por remote-write — ver
-# docs/adr/0006-opentelemetry-collector-como-fan-out.md.
+# Punto de entrada único de OTLP para toda la app; reparte cada señal a donde sabe entenderla
+# (Tempo solo trazas, Prometheus solo métricas por remote-write). Ver ADR 0006.
 receivers:
   otlp:
     protocols:
@@ -23,9 +21,8 @@ exporters:
   debug:
     verbosity: basic
 
-# Sin healthcheck de Docker propio (la imagen otel/opentelemetry-collector-contrib no trae shell
-# ni curl/wget para ejecutar uno), pero esta extensión sí sirve para comprobar el estado a mano:
-# curl http://localhost:13133 desde fuera del contenedor.
+# Sin healthcheck de Docker propio (la imagen no trae shell ni curl/wget), pero sirve para
+# comprobar el estado a mano: curl http://localhost:13133 desde fuera del contenedor.
 extensions:
   health_check:
     endpoint: 0.0.0.0:13133

@@ -14,13 +14,7 @@ public sealed class RabbitMqPublishResilienceOptions
     /// <summary>Número de fallos consecutivos que abren el circuito.</summary>
     public int ConsecutiveFailuresBeforeBreaking { get; set; } = DefaultConsecutiveFailuresBeforeBreaking;
 
-    /// <summary>
-    /// Ventana de tiempo sobre la que se evalúan los fallos. Ver
-    /// docs/adr/0004-polly-retry-postgres-circuit-breaker-rabbitmq.md: con
-    /// <c>FailureRatio = 1.0</c> (fijo, no configurable), cualquier publicación que tenga éxito
-    /// dentro de esta ventana reinicia el conteo, así que en la práctica se comporta como
-    /// "N fallos consecutivos" mientras la ventana sea lo bastante amplia para contenerlos.
-    /// </summary>
+    /// <summary>Ventana sobre la que se evalúan los fallos (con FailureRatio=1.0, un éxito la reinicia).</summary>
     public TimeSpan SamplingDuration { get; set; } = DefaultSamplingDuration;
 
     /// <summary>Tiempo que el circuito permanece abierto (fail-fast) antes de pasar a semiabierto.</summary>

@@ -8,11 +8,7 @@ using Microsoft.Extensions.Options;
 
 namespace FlashQueue.Workers;
 
-/// <summary>
-/// Consume <see cref="ReservationIngestChannel"/> y procesa las reservas con concurrencia
-/// acotada y fairness por evento (round-robin). Ver docs/adr/0001-fairness-round-robin-en-worker.md
-/// para el razonamiento detrás del diseño.
-/// </summary>
+/// <summary>Consume el channel de ingesta con concurrencia acotada y fairness round-robin por evento.</summary>
 public sealed class ReservationProcessingWorker : BackgroundService
 {
     private readonly ReservationIngestChannel _ingestChannel;
@@ -57,10 +53,8 @@ public sealed class ReservationProcessingWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // La ingesta y el despacho corren como bucles independientes: la ingesta nunca debe
-        // bloquearse esperando un hueco de procesamiento, o un evento con mucho tráfico podría
-        // retrasar la lectura del canal de entrada (y con ella, el descubrimiento de nuevos
-        // eventos que también necesitan su turno).
+        // Bucles independientes: si la ingesta esperara a un hueco de procesamiento, un evento
+        // con mucho tráfico retrasaría la lectura del channel para todos los demás.
         var ingestLoop = IngestLoopAsync(stoppingToken);
         var dispatchLoop = DispatchLoopAsync(stoppingToken);
 
@@ -80,7 +74,6 @@ public sealed class ReservationProcessingWorker : BackgroundService
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
-            // Shutdown solicitado: dejamos de aceptar nuevos items del canal de ingesta.
         }
     }
 
@@ -90,8 +83,7 @@ public sealed class ReservationProcessingWorker : BackgroundService
         var queue = _eventQueues.GetOrAdd(eventId, static _ => new ConcurrentQueue<ReservationIngestItem>());
         queue.Enqueue(item);
 
-        // Solo se concede un turno en la ronda por evento a la vez: mientras el evento ya
-        // tenga un turno pendiente, los nuevos items simplemente se acumulan en su cola.
+        // Un evento solo tiene un turno pendiente a la vez; los items nuevos se acumulan en su cola.
         if (_activeEvents.TryAdd(eventId, 0))
         {
             _turns.Writer.TryWrite(eventId);
@@ -104,9 +96,8 @@ public sealed class ReservationProcessingWorker : BackgroundService
         {
             while (true)
             {
-                // El permiso se adquiere ANTES de tomar el siguiente turno de la ronda: así el
-                // dispatcher nunca "reserva" un turno mientras espera un hueco de concurrencia,
-                // y el orden de la ronda refleja fielmente el orden real de llegada de eventos.
+                // El permiso se adquiere antes de tomar turno, para que el orden de la ronda
+                // refleje el orden real de llegada y no quede "reservado" mientras se espera.
                 await _concurrencyLimiter.WaitAsync(stoppingToken);
 
                 Guid eventId;
@@ -123,8 +114,7 @@ public sealed class ReservationProcessingWorker : BackgroundService
                 var queue = _eventQueues[eventId];
                 if (!queue.TryDequeue(out var item))
                 {
-                    // No debería ocurrir: un turno solo se concede cuando hay al menos un item
-                    // en la cola del evento. Nos protegemos igualmente de una condición imposible.
+                    // No debería pasar (un turno solo se concede con al menos un item en cola).
                     _activeEvents.TryRemove(eventId, out _);
                     _concurrencyLimiter.Release();
                     continue;
@@ -137,15 +127,10 @@ public sealed class ReservationProcessingWorker : BackgroundService
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
-            // Shutdown solicitado: dejamos de despachar nuevos turnos.
         }
     }
 
-    /// <summary>
-    /// Decide si el evento vuelve al final de la ronda (le quedan items) o se marca inactivo.
-    /// Usa doble comprobación para no perder el turno si un productor encola concurrentemente
-    /// justo entre la comprobación de vacío y la retirada de la marca de "activo".
-    /// </summary>
+    /// <summary>Devuelve el evento al final de la ronda si le quedan items, o lo marca inactivo.</summary>
     private void CompleteTurn(Guid eventId, ConcurrentQueue<ReservationIngestItem> queue)
     {
         if (!queue.IsEmpty)
@@ -156,6 +141,7 @@ public sealed class ReservationProcessingWorker : BackgroundService
 
         _activeEvents.TryRemove(eventId, out _);
 
+        // Doble comprobación: un productor pudo encolar justo entre el IsEmpty de arriba y el TryRemove.
         if (!queue.IsEmpty && _activeEvents.TryAdd(eventId, 0))
         {
             _turns.Writer.TryWrite(eventId);
@@ -166,10 +152,8 @@ public sealed class ReservationProcessingWorker : BackgroundService
     {
         var request = item.Request;
 
-        // ActivityKind.Consumer + el contexto capturado en el momento de encolar (ver
-        // ReservationsEndpoints/ReservationIngestItem): esto reconecta la traza al otro lado del
-        // channel como un hijo real del span "reservation.enqueue" de la petición HTTP original,
-        // no como una traza nueva sin relación con la que la originó.
+        // Reconecta la traza al otro lado del channel usando el contexto capturado al encolar,
+        // en vez de abrir una traza nueva sin relación con la petición HTTP original.
         using var activity = FlashQueueDiagnostics.ActivitySource.StartActivity(
             "reservation.process", ActivityKind.Consumer, item.TraceContext);
         activity?.SetTag("reservation.id", request.Id);
@@ -193,10 +177,7 @@ public sealed class ReservationProcessingWorker : BackgroundService
         }
     }
 
-    /// <summary>
-    /// Espera a que los procesamientos en vuelo terminen (liberando todos los permisos del
-    /// semáforo) con un límite de tiempo, en vez de abandonarlos inmediatamente al hacer shutdown.
-    /// </summary>
+    /// <summary>Espera a que las reservas en vuelo terminen antes de apagar, con un límite de tiempo.</summary>
     private async Task DrainAsync()
     {
         var acquired = 0;

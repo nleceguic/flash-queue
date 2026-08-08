@@ -7,5 +7,7 @@
 **/launchSettings.json
 docs/
 tests/
+load-tests/
+observability/
 *.md
 FlashQueue_Project_Brief.pdf

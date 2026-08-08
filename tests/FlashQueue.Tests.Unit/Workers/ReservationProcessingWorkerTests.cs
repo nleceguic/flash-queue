@@ -17,11 +17,8 @@ public class ReservationProcessingWorkerTests
         var channel = new ReservationIngestChannel(new ReservationIngestOptions { Capacity = 200 });
         var processor = new RecordingReservationProcessor();
 
-        // La primera petición procesada se bloquea deliberadamente: con MaxConcurrency = 1, esto
-        // congela el despacho justo después de arrancar, mientras el bucle de ingesta -que no
-        // depende del procesamiento- drena en paralelo las 105 peticiones a las colas internas
-        // por evento. El retraso de 300 ms es un margen amplísimo frente al coste real (~microsegundos
-        // para 105 operaciones puramente en memoria), así que no debería producir un test inestable.
+        // Bloquea la primera petición procesada: con MaxConcurrency = 1 esto congela el despacho
+        // mientras el bucle de ingesta drena en paralelo las 105 peticiones a las colas por evento.
         var firstCallGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var firstCallClaimed = 0;
         processor.OnProcessing = (_, _) =>

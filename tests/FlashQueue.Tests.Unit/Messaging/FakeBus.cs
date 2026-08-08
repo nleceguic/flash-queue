@@ -2,13 +2,7 @@ using MassTransit;
 
 namespace FlashQueue.Tests.Unit.Messaging;
 
-/// <summary>
-/// Doble de prueba de <see cref="IBus"/> ("el HttpClient/DbConnection fake" del encargo,
-/// adaptado a la dependencia real de este proyecto): solo implementa de verdad el overload de
-/// <c>Publish</c> que usa <see cref="FlashQueue.Infrastructure.Messaging.ReservationEventPublisher"/>;
-/// el resto de la superficie de <see cref="IBus"/> (mucho más grande, pensada para hosts/consumidores
-/// reales) no se ejercita y lanza si se llama por error.
-/// </summary>
+/// <summary>Doble de <see cref="IBus"/>: solo implementa el overload de <c>Publish</c> que usa <c>ReservationEventPublisher</c>, el resto lanza.</summary>
 internal sealed class FakeBus(Func<CancellationToken, Task> behavior) : IBus
 {
     public int CallCount { get; private set; }

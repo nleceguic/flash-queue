@@ -64,7 +64,7 @@
       "id": 3,
       "type": "timeseries",
       "title": "Tamaño del channel de ingesta (ReservationIngestChannel)",
-      "description": "ObservableGauge muestreado bajo demanda por el exportador de métricas. Api y Workers tienen cada uno su propia instancia de channel (ver docs/adr/0006), por eso se desglosa por service_name.",
+      "description": "ObservableGauge muestreado bajo demanda por el exportador de métricas. Desde ADR 0013 hay una única instancia de channel por sistema, compartida por el endpoint de ingesta y el worker (antes había una por proceso — ver ADR 0006); se sigue desglosando por service_name por si en el futuro vuelve a haber más de un proceso.",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {

@@ -9,12 +9,7 @@ using Npgsql;
 
 namespace FlashQueue.Tests.Unit.Chaos;
 
-/// <summary>
-/// Comportamiento de <see cref="RandomChaosInjector"/> (la implementación activada por
-/// CHAOS_MODE=true): latencia dentro del rango configurado, tasa de fallo aproximada a la
-/// probabilidad configurada, el fallo de Postgres es transitorio de verdad (dispara el retry de
-/// ADR 0004) y todo se loguea con el prefijo [CHAOS]. Ver docs/adr/0005-modo-caos.md.
-/// </summary>
+/// <summary>Comportamiento de <see cref="RandomChaosInjector"/>: latencia, tasa de fallo y logging con prefijo [CHAOS].</summary>
 public class RandomChaosInjectorTests
 {
     [Fact]
@@ -88,9 +83,7 @@ public class RandomChaosInjectorTests
             }
         }
 
-        // p = 0.5 sobre 300 ensayos: media 150, desviación típica ~8.7. Un margen de ±60 (~7
-        // desviaciones) hace que un fallo del test por azar sea, a efectos prácticos, imposible,
-        // sin dejar de comprobar que el mecanismo realmente falla "algunas veces sí, otras no".
+        // Media esperada 150; margen amplio (±60) para que el azar no haga fallar el test.
         failures.Should().BeInRange(90, 210);
     }
 

@@ -3,11 +3,7 @@ using FlashQueue.Domain.Entities;
 
 namespace FlashQueue.Tests.Unit.Workers;
 
-/// <summary>
-/// Doble de prueba de <see cref="IReservationProcessor"/>: registra el orden de procesamiento,
-/// mide la concurrencia observada y permite conectar un comportamiento asíncrono controlado por
-/// el test (p. ej. bloquear una llamada hasta que el test decida liberarla).
-/// </summary>
+/// <summary>Doble de <see cref="IReservationProcessor"/>: registra el orden de procesamiento y la concurrencia observada.</summary>
 internal sealed class RecordingReservationProcessor : IReservationProcessor
 {
     private readonly List<ReservationRequest> _processedOrder = [];

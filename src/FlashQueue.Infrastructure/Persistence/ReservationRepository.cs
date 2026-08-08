@@ -9,13 +9,8 @@ using Polly;
 namespace FlashQueue.Infrastructure.Persistence;
 
 /// <summary>
-/// Reserva stock de forma segura bajo concurrencia: bloquea la fila del evento con
-/// <c>SELECT ... FOR UPDATE SKIP LOCKED</c>, decide Confirmed/Rejected según el stock
-/// disponible en ese instante, y persiste el cambio de stock + la reserva en la misma
-/// transacción. Ver docs/adr/0002-locking-skip-locked-con-reintentos.md para el porqué
-/// de SKIP LOCKED (con reintentos) frente a un FOR UPDATE que bloquea, y
-/// docs/adr/0004-polly-retry-postgres-circuit-breaker-rabbitmq.md para el reintento adicional
-/// ante fallos transitorios de conexión (mecanismo distinto e independiente del anterior).
+/// Reserva stock bajo concurrencia con <c>SELECT ... FOR UPDATE SKIP LOCKED</c> (ADR 0002),
+/// decidiendo Confirmed/Rejected según el stock disponible y persistiendo todo en una transacción.
 /// </summary>
 public sealed class ReservationRepository
 {
@@ -42,9 +37,7 @@ public sealed class ReservationRepository
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        // Todo el método es seguro de reintentar como unidad: nada se compromete hasta el
-        // CommitAsync final, así que un fallo transitorio a mitad de camino no deja escritura
-        // parcial alguna que limpiar.
+        // Reintentable como unidad: nada se compromete hasta el CommitAsync final.
         return _transientFaultPipeline.ExecuteAsync(
             static (state, ct) => new ValueTask<Reservation>(state.Self.ReserveCoreAsync(state.Request, ct)),
             (Self: this, Request: request),
@@ -53,10 +46,6 @@ public sealed class ReservationRepository
 
     private async Task<Reservation> ReserveCoreAsync(ReservationRequest request, CancellationToken cancellationToken)
     {
-        // Con el modo caos desactivado esto resuelve a NullChaosInjector: una llamada virtual a un
-        // método que solo devuelve Task.CompletedTask, sin ningún condicional aquí. Dentro del
-        // pipeline de reintento (ReserveAsync): cada reintento vuelve a pasar por aquí, así que un
-        // fallo inyectado se comporta igual que un fallo transitorio real de la conexión.
         await _chaosInjector.BeforePostgresCallAsync(cancellationToken);
 
         await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
@@ -117,12 +106,7 @@ public sealed class ReservationRepository
         return reservation;
     }
 
-    /// <summary>
-    /// Reintenta <c>SELECT ... FOR UPDATE SKIP LOCKED</c> mientras la fila esté ocupada por otra
-    /// transacción (0 filas devueltas no distingue "ocupada" de "inexistente"; la existencia ya
-    /// se comprobó antes de llamar aquí). Cada intento fallido no bloquea: Postgres nunca hace
-    /// esperar al llamante, así que el reintento con una espera corta es responsabilidad nuestra.
-    /// </summary>
+    /// <summary>Reintenta el lock con espera corta mientras la fila esté ocupada por otra transacción.</summary>
     private async Task<EventStockRow> AcquireEventStockAsync(
         NpgsqlConnection connection, NpgsqlTransaction transaction, Guid eventId, CancellationToken cancellationToken)
     {

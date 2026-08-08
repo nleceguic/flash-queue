@@ -9,9 +9,8 @@ using Testcontainers.PostgreSql;
 namespace FlashQueue.Tests.Integration.Persistence;
 
 /// <summary>
-/// El test más importante del proyecto: prueba, contra un Postgres real (Testcontainers, no
-/// un mock), que <see cref="ReservationRepository"/> nunca vende más stock del disponible bajo
-/// contención extrema. Ver docs/adr/0002-locking-skip-locked-con-reintentos.md.
+/// El test más importante del proyecto: contra Postgres real, bajo contención extrema,
+/// <see cref="ReservationRepository"/> nunca vende más stock del disponible.
 /// </summary>
 public sealed class ReservationRepositoryOversellingTests : IAsyncLifetime
 {
@@ -27,10 +26,8 @@ public sealed class ReservationRepositoryOversellingTests : IAsyncLifetime
     {
         await _postgres.StartAsync();
 
-        // Maximum Pool Size se mantiene deliberadamente por debajo del max_connections por
-        // defecto de Postgres (100). El test admite las 20.000 peticiones con un semáforo
-        // propio (ver más abajo) del mismo tamaño que el pool, así ninguna llamada llega a
-        // esperar dentro de la cola de conexiones de Npgsql (que tiene su propio timeout).
+        // Por debajo del max_connections por defecto de Postgres (100); el semáforo de abajo
+        // limita las peticiones en vuelo al tamaño del pool para no encolar en Npgsql.
         var connectionString = $"{_postgres.GetConnectionString()};Maximum Pool Size=80;Timeout=30;Command Timeout=30";
         _dataSource = NpgsqlDataSource.Create(connectionString);
 
@@ -67,10 +64,8 @@ public sealed class ReservationRepositoryOversellingTests : IAsyncLifetime
             },
             new NullChaosInjector());
 
-        // Admite las 20.000 peticiones concurrentemente, pero acota cuántas están realmente
-        // en vuelo (y por tanto cuántas conexiones Npgsql abiertas a la vez) al tamaño del
-        // pool: así el pool de conexiones nunca actúa como cuello de botella artificial, y el
-        // único límite real sigue siendo el lock de fila que este test está verificando.
+        // Acota las conexiones en vuelo al tamaño del pool para que el único límite real sea
+        // el lock de fila que este test verifica, no el pool de conexiones.
         using var admission = new SemaphoreSlim(64, 64);
 
         var results = await Task.WhenAll(Enumerable.Range(0, requestCount).Select(async _ =>

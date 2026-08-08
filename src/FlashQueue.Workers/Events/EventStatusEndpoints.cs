@@ -7,15 +7,7 @@ using Npgsql;
 
 namespace FlashQueue.Workers.Events;
 
-/// <summary>
-/// Expone el stock de un evento en tiempo real, leyendo Postgres directamente (no hay caché ni
-/// modelo de lectura aparte: el volumen de este endpoint es bajo — lo usa un monitor de test de
-/// carga sondeando cada segundo, no el hot path de reservas). Lo consume
-/// <c>load-tests/flashqueue-spike.js</c> para comprobar, mientras la carga está en curso, que
-/// <c>reservedStock</c> nunca supera a <c>totalStock</c> — la misma garantía que
-/// <c>ReservationRepositoryOversellingTests</c> ya prueba de forma rigurosa a nivel de
-/// repositorio, pero observada aquí desde fuera del proceso, bajo carga HTTP real.
-/// </summary>
+/// <summary>Expone el stock de un evento en tiempo real, leyendo Postgres directamente (sin caché).</summary>
 public static class EventStatusEndpoints
 {
     public static IEndpointRouteBuilder MapEventStatusEndpoint(this IEndpointRouteBuilder app)

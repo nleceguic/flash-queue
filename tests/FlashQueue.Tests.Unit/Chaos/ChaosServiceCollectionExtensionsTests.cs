@@ -7,11 +7,7 @@ using Microsoft.Extensions.Logging;
 
 namespace FlashQueue.Tests.Unit.Chaos;
 
-/// <summary>
-/// CHAOS_MODE ausente y CHAOS_MODE=false deben producir exactamente el mismo comportamiento
-/// (cero overhead): ambos casos deben registrar <see cref="NullChaosInjector"/>, nunca
-/// <see cref="RandomChaosInjector"/>. Ver docs/adr/0005-modo-caos.md.
-/// </summary>
+/// <summary>CHAOS_MODE ausente y "false" deben registrar <see cref="NullChaosInjector"/> por igual.</summary>
 public class ChaosServiceCollectionExtensionsTests
 {
     [Fact]
@@ -67,9 +63,7 @@ public class ChaosServiceCollectionExtensionsTests
 
             stopwatch.Stop();
 
-            // 400 llamadas a un no-op deben completarse en milisegundos: si "ausente" y "false" se
-            // comportaran de forma distinta (p. ej. una de las dos inyectando latencia por error),
-            // este margen lo detectaría sin ambigüedad — nunca se lanza ninguna excepción tampoco.
+            // Si alguna de las dos rutas inyectara latencia por error, esto lo detectaría.
             stopwatch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(1));
         }
     }

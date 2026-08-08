@@ -51,32 +51,38 @@ Todas opcionales — los valores por defecto casan con `docker-compose.yml` y
 
 | Variable          | Por defecto                              | Qué es |
 |-------------------|-------------------------------------------|--------|
-| `API_BASE_URL`    | `http://localhost:5257`                    | `FlashQueue.Api` — recibe los `POST` de reservas |
-| `STATUS_BASE_URL` | `http://localhost:5280`                    | `FlashQueue.Workers` — sirve `GET /events/{id}/status` |
+| `API_BASE_URL`    | `http://localhost:5257`                    | Recibe los `POST` de reservas |
+| `STATUS_BASE_URL` | `http://localhost:5280`                    | Sirve `GET /events/{id}/status` |
 | `EVENT_ID`        | `7c9e6679-7425-40de-944b-e07fc1f90ae7`     | Evento a reservar (el que siembra `seed-event.sql`) |
 | `TOTAL_STOCK`     | `500`                                      | Solo informativo, para el resumen |
+
+Desde [ADR 0013](../docs/adr/0013-api-y-workers-no-comparten-el-channel-de-ingesta.md)
+ambas apuntan al mismo proceso (`workers` en `docker-compose.yml`), expuesto
+en dos puertos por compatibilidad con la topología anterior — no hace falta
+levantar dos servicios distintos.
 
 ```bash
 k6 run -e API_BASE_URL=http://mi-host:5257 -e STATUS_BASE_URL=http://mi-host:5280 flashqueue-spike.js
 ```
 
-## ⚠️ Qué mide realmente este test ahora mismo
+## Qué mide este test
 
-`FlashQueue.Api` y `FlashQueue.Workers` son procesos independientes, cada uno
-con su propio canal de ingesta en memoria (ver
-[`../docs/adr/0006-opentelemetry-collector-como-fan-out.md`](../docs/adr/0006-opentelemetry-collector-como-fan-out.md)
-y [`../README-DOCKER.md`](../README-DOCKER.md), sección "Notas"). Una reserva
-aceptada (202) por Api **no llega** a Workers cuando corren en contenedores
-separados, como en `docker-compose.yml`. Con la topología actual:
+Hasta [ADR 0013](../docs/adr/0013-api-y-workers-no-comparten-el-channel-de-ingesta.md),
+`FlashQueue.Api` y `FlashQueue.Workers` corrían como procesos independientes,
+cada uno con su propio canal de ingesta en memoria — una reserva aceptada
+(202) por Api nunca llegaba a persistirse. Con esa limitación ya corregida
+(ambos comparten ahora un único proceso y un único channel), este test mide
+el pipeline completo: ingesta HTTP, backpressure del channel, persistencia
+en Postgres y el estado real de `reserved_stock` bajo el pico.
 
-- El test **sí mide de verdad** el comportamiento de `FlashQueue.Api` bajo
-  carga: throughput, latencia y cómo se comporta el rate limiter (3.000
-  peticiones/s + cola de 2.000 por evento) ante un pico de 20.000 — la
-  degradación controlada que pide CLAUDE.md sección 1.
-- El check "nunca se supera el stock" pasará siempre, porque `reserved_stock`
-  no se mueve de 0 (Workers nunca ve estas peticiones). No es un check vacío
-  por error: la garantía real de cero overselling bajo concurrencia ya está
-  probada de forma rigurosa y directa contra el repositorio en
-  [`../tests/FlashQueue.Tests.Integration/Persistence/ReservationRepositoryOversellingTests.cs`](../tests/FlashQueue.Tests.Integration/Persistence/ReservationRepositoryOversellingTests.cs)
-  (20.000 reservas concurrentes reales). Este test de carga la observa desde
-  fuera del proceso vía `GET /events/{id}/status`, pero no la sustituye.
+**Pendiente**: las cifras que hasta ahora vivían en el README raíz
+("Números reales del último test de carga") son de *antes* de ADR 0013 —
+documentan el hallazgo del bug, no el comportamiento actual. Vuelve a correr
+`./run.sh` contra la topología corregida para obtener números vigentes.
+
+La garantía de cero overselling sigue estando probada, además, de forma
+rigurosa y directa contra el repositorio (sin pasar por HTTP ni por el
+channel) en
+[`../tests/FlashQueue.Tests.Integration/Persistence/ReservationRepositoryOversellingTests.cs`](../tests/FlashQueue.Tests.Integration/Persistence/ReservationRepositoryOversellingTests.cs)
+(20.000 reservas concurrentes reales) — este test de carga la observa desde
+fuera del proceso vía `GET /events/{id}/status`, pero no la sustituye.

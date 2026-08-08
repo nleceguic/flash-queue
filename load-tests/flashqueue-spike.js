@@ -3,29 +3,15 @@
 // bajo durante 2 minutos. Ver CLAUDE.md sección 1 ("...sometido a picos de miles de peticiones
 // concurrentes en segundos") — este script es la verificación empírica de esa frase.
 //
-// AVISO IMPORTANTE (léelo antes de sacar conclusiones de los resultados; verificado
-// empíricamente corriendo este mismo script contra docker-compose.yml, no es una hipótesis):
-// FlashQueue.Api y FlashQueue.Workers son procesos independientes, cada uno con su propio
-// ReservationIngestChannel EN MEMORIA (ver docs/adr/0006-opentelemetry-collector-como-fan-out.md,
-// sección de limitaciones conocidas, y README-DOCKER.md). El de Api no tiene NINGÚN lector en su
-// propio proceso — Workers lee de una instancia distinta — así que, pasadas las primeras
-// `ReservationIngest:Capacity` peticiones (500 por defecto), el channel de Api se llena y cada
-// `WriteAsync` siguiente se queda BLOQUEADO indefinidamente esperando un hueco que nunca se
-// libera. Eso es exactamente lo que vas a ver en los resultados con la topología actual:
-//   - Un primer tramo de respuestas 202 rapidísimas (mientras el channel tiene hueco).
-//   - Después, la inmensa mayoría de las peticiones sin responder hasta el timeout configurado
-//     abajo (5s — deliberadamente corto; con el timeout por defecto de k6, 60s, el test tardaría
-//     casi una hora en completar el pico de 20.000 peticiones). Esto NO es un fallo del test ni
-//     del rate limiter (3000 req/s + cola 2000 — ver
-//     FlashQueue.Api/RateLimiting/ReservationsRateLimiterExtensions.cs): es backpressure real del
-//     channel, exactamente donde CLAUDE.md dice que debe aplicarse, solo que en este despliegue
-//     concreto nadie lo drena.
-//   - El check de "nunca se supera el stock" contra GET /events/{id}/status pasará siempre,
-//     porque Workers nunca ve estas peticiones y reserved_stock no se mueve de 0 — no es una
-//     prueba vacía por casualidad, es la garantía real de "cero overselling" observada desde
-//     fuera del proceso, la misma que ReservationRepositoryOversellingTests ya prueba de forma
-//     rigurosa con 20.000 reservas CONCURRENTES REALES directamente contra el repositorio
-//     (ver docs/adr/0002-locking-skip-locked-con-reintentos.md). Este script no la sustituye.
+// Hasta ADR 0013, FlashQueue.Api y FlashQueue.Workers corrían como procesos independientes en
+// docker-compose.yml, cada uno con su propio ReservationIngestChannel en memoria sin relación
+// entre sí — el pico de este mismo script confirmó empíricamente que, pasadas las primeras
+// ~500 peticiones (ReservationIngest:Capacity), el channel de Api se saturaba y cada WriteAsync
+// siguiente se quedaba bloqueado indefinidamente sin drenar nunca (ver docs/adr/0008 para las
+// cifras exactas de esa ejecución). Desde ADR 0013 ambos viven en el mismo proceso ("workers" en
+// docker-compose.yml) y comparten de verdad el mismo channel, así que el pico completo debería
+// llegar a persistirse en Postgres — vuelve a correr este script tras el fix para obtener números
+// reales de la topología corregida; los del README son de antes del ADR 0013, no vigentes.
 //
 // Requiere k6 (https://k6.io) — sin dependencias/extensiones adicionales.
 //
@@ -37,10 +23,10 @@
 //      (o usa load-tests/run.sh, que hace los tres pasos y genera la gráfica al final)
 //
 // Variables de entorno (todas opcionales, con valores por defecto que casan con
-// docker-compose.yml y seed-event.sql):
-//   API_BASE_URL    - base de FlashQueue.Api (POST de reservas). Por defecto http://localhost:5257
-//   STATUS_BASE_URL - base de FlashQueue.Workers (GET de estado, /events/{id}/status).
-//                     Por defecto http://localhost:5280
+// docker-compose.yml y seed-event.sql). Desde ADR 0013 ambas apuntan al mismo proceso
+// ("workers"), expuesto en dos puertos por compatibilidad con la topología anterior:
+//   API_BASE_URL    - base para el POST de reservas. Por defecto http://localhost:5257
+//   STATUS_BASE_URL - base para el GET de estado, /events/{id}/status. Por defecto http://localhost:5280
 //   EVENT_ID        - evento a reservar. Por defecto el que siembra seed-event.sql.
 //   TOTAL_STOCK     - stock esperado, solo para el mensaje de log si algo no cuadra con /status.
 
@@ -106,12 +92,11 @@ export const options = {
 export function reserve() {
   const userId = randomUuid();
   const payload = JSON.stringify({ userId, quantity: 1 });
-  // timeout corto a propósito: el channel de ingesta de Api es bounded (500 por defecto,
-  // ReservationIngest:Capacity) y, con la topología actual (ver cabecera de este archivo), nada
-  // lo vacía — pasado ese punto, WriteAsync se queda bloqueado indefinidamente y una petición sin
-  // límite de tiempo se colgaría 60s (el timeout por defecto de k6) en vez de fallar rápido. Un
-  // timeout corto hace que el test refleje esto en segundos, no en minutos, sin cambiar lo que se
-  // está midiendo: sigue siendo "¿respondió a tiempo, sí o no?".
+  // timeout corto a propósito: el channel de ingesta es bounded (500 por defecto,
+  // ReservationIngest:Capacity). Con el timeout por defecto de k6 (60s) una petición que tarde en
+  // responder colgaría el test en vez de fallar rápido. Un timeout corto hace que el test refleje
+  // eso en segundos, no en minutos, sin cambiar lo que se está midiendo: sigue siendo "¿respondió
+  // a tiempo, sí o no?".
   const params = { headers: { 'Content-Type': 'application/json' }, timeout: '5s' };
 
   const res = http.post(`${API_BASE_URL}/events/${EVENT_ID}/reservations`, payload, params);

@@ -72,10 +72,6 @@ Thumbs.db
 ## Rider/JetBrains
 *.sln.DotSettings.user
 
-## OpenTelemetry / local observability data
-otel-data/
-grafana-data/
-
 ## Test de carga (k6) — resultados regenerables (la serie cruda puede pesar decenas de MB).
 ## Para versionar una gráfica concreta en el README: git add -f load-tests/results/*.png
 load-tests/results/*
@@ -84,3 +80,4 @@ load-tests/results/*
 ## Memoria del proyecto para el asistente — se queda en local a propósito, no es para el repo
 ## público (candidaturas). El README.md sí es público y autocontenido.
 CLAUDE.md
+FlashQueue_Project_Brief.pdf

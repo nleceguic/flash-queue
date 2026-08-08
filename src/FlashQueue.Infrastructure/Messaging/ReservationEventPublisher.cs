@@ -4,11 +4,8 @@ using MassTransit;
 namespace FlashQueue.Infrastructure.Messaging;
 
 /// <summary>
-/// Depende de <see cref="IBus"/>, no de <see cref="IPublishEndpoint"/>: MassTransit registra
-/// <c>IPublishEndpoint</c> como scoped (pensado para publicar desde dentro de un consumidor, con
-/// el contexto del mensaje en curso) mientras que <c>IBus</c> es singleton, que es lo correcto
-/// aquí — <see cref="PostgresReservationProcessor"/> publica fuera de cualquier consume context,
-/// disparado por <c>ReservationProcessingWorker</c>, no por un mensaje recibido.
+/// Depende de <see cref="IBus"/> (singleton), no de <see cref="IPublishEndpoint"/> (scoped, pensado
+/// para publicar desde un consumer): aquí se publica fuera de cualquier consume context.
 /// </summary>
 public sealed class ReservationEventPublisher(
     IBus bus, RabbitMqPublishResiliencePipelineProvider resilienceProvider, IChaosInjector chaosInjector)
@@ -18,9 +15,7 @@ public sealed class ReservationEventPublisher(
     {
         ArgumentNullException.ThrowIfNull(message);
 
-        // La inyección de caos vive DENTRO del delegado que ejecuta el pipeline: un fallo
-        // artificial cuenta como un fallo real de cara al circuit breaker (y el timeout también
-        // se aplica a la latencia artificial, igual que a una publicación real lenta).
+        // El caos vive dentro del pipeline: un fallo artificial cuenta como fallo real para el circuit breaker.
         return resilienceProvider.Pipeline.ExecuteAsync(
             static async (state, ct) =>
             {

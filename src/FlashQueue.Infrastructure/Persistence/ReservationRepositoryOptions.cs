@@ -14,11 +14,7 @@ public sealed class ReservationRepositoryOptions
     /// <summary>Espera base entre reintentos de <c>SELECT ... FOR UPDATE SKIP LOCKED</c> cuando la fila está ocupada.</summary>
     public TimeSpan LockRetryDelay { get; set; } = DefaultLockRetryDelay;
 
-    /// <summary>
-    /// Número máximo de reintentos (además del intento original) ante un fallo transitorio de
-    /// Postgres (conexión perdida, timeout de red) — ver <c>PostgresResilience</c>. No afecta al
-    /// bucle de <c>SELECT ... FOR UPDATE SKIP LOCKED</c>, que es un mecanismo aparte.
-    /// </summary>
+    /// <summary>Reintentos ante un fallo transitorio de Postgres (ver <c>PostgresResilience</c>); no afecta al bucle de SKIP LOCKED.</summary>
     public int TransientFaultMaxRetryAttempts { get; set; } = DefaultTransientFaultMaxRetryAttempts;
 
     /// <summary>Retardo base (antes de aplicar backoff exponencial + jitter) del primer reintento transitorio.</summary>
