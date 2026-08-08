@@ -24,4 +24,11 @@
     <ProjectReference Include="..\FlashQueue.Infrastructure\FlashQueue.Infrastructure.csproj" />
     <ProjectReference Include="..\FlashQueue.Contracts\FlashQueue.Contracts.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- Microsoft.NET.Sdk.Worker no empaqueta wwwroot/ automáticamente como Sdk.Web (sin
+         "static web assets") — se copia a mano para que dashboard.html llegue tanto a bin/ en
+         local como a /app/publish en la imagen Docker. -->
+    <Content Include="wwwroot\**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

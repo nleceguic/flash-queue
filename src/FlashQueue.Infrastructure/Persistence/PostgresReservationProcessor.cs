@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using FlashQueue.Application.Observability;
 using FlashQueue.Application.Processing;
+using FlashQueue.Application.Stats;
 using FlashQueue.Contracts.Events;
 using FlashQueue.Domain.Entities;
 using FlashQueue.Infrastructure.Messaging;
@@ -10,13 +11,12 @@ using Polly.Timeout;
 
 namespace FlashQueue.Infrastructure.Persistence;
 
-/// <summary>
-/// Implementación real de <see cref="IReservationProcessor"/> sobre Postgres. Sustituye a
-/// <c>LoggingReservationProcessor</c> (placeholder de FlashQueue.Workers) ahora que existe
-/// el motor de reserva descrito en CLAUDE.md, sección 2, punto 3.
-/// </summary>
+/// <summary>Implementación real de <see cref="IReservationProcessor"/> sobre Postgres.</summary>
 public sealed class PostgresReservationProcessor(
-    ReservationRepository repository, IReservationEventPublisher eventPublisher, ILogger<PostgresReservationProcessor> logger)
+    ReservationRepository repository,
+    IReservationEventPublisher eventPublisher,
+    IReservationStatsNotifier statsNotifier,
+    ILogger<PostgresReservationProcessor> logger)
     : IReservationProcessor
 {
     public async Task ProcessAsync(ReservationRequest request, CancellationToken cancellationToken)
@@ -28,16 +28,20 @@ public sealed class PostgresReservationProcessor(
         var statusTag = new KeyValuePair<string, object?>("reservation.status", reservation.Status.ToString());
         Activity.Current?.SetTag(statusTag.Key, statusTag.Value);
 
-        // La reserva ya cuenta como "procesada" aquí, tanto para la métrica de throughput como
-        // para la de latencia: RequestedAt→ResolvedAt mide el tiempo hasta que la decisión de
-        // negocio queda persistida, que es lo que le importa a quien está esperando la reserva —
-        // un fallo de publicación después de este punto no debe inflar ni contaminar esa medida.
         FlashQueueDiagnostics.ReservationsProcessed.Add(1, statusTag);
         FlashQueueDiagnostics.ProcessingDuration.Record((resolvedAt - request.RequestedAt).TotalMilliseconds, statusTag);
 
-        // La reserva ya quedó persistida en Postgres en este punto (ver ADR 0004): si RabbitMQ
-        // está caído o el circuito está abierto, se registra el fallo de publicación y se
-        // continúa — nunca se deshace ni se reintenta la reserva por un problema del broker.
+        // Best-effort: un fallo notificando al panel en vivo no debe tumbar la reserva.
+        try
+        {
+            await statsNotifier.NotifyReservationResolvedAsync(reservation.EventId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "No se pudo notificar al panel en vivo sobre la reserva {ReservationId}.", reservation.Id);
+        }
+
+        // La reserva ya está persistida: un fallo publicando no la deshace ni se reintenta.
         try
         {
             if (reservation.Status == ReservationStatus.Confirmed)

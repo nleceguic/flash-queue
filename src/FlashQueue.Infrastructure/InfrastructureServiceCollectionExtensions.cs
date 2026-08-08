@@ -1,4 +1,5 @@
 using FlashQueue.Application.Processing;
+using FlashQueue.Application.Stats;
 using FlashQueue.Infrastructure.Chaos;
 using FlashQueue.Infrastructure.Messaging;
 using FlashQueue.Infrastructure.Persistence;
@@ -24,6 +25,9 @@ public static class InfrastructureServiceCollectionExtensions
 
         services.AddChaos(configuration);
 
+        // Por defecto no-op; FlashQueue.Workers lo sustituye por SignalRReservationStatsNotifier.
+        services.TryAddSingleton<IReservationStatsNotifier, NullReservationStatsNotifier>();
+
         services.Configure<ReservationRepositoryOptions>(
             configuration.GetSection(ReservationRepositoryOptions.SectionName));
         services.AddSingleton(sp => new ReservationRepository(
@@ -35,13 +39,11 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<SchemaMigrator>();
         services.AddSingleton<IReservationProcessor, PostgresReservationProcessor>();
 
-        // FlashQueue.Workers solo publica (ver PostgresReservationProcessor), nunca consume: no
-        // se pasa configureConsumers ni serviceName.
+        // FlashQueue.Workers solo publica, nunca consume: no se pasa configureConsumers ni serviceName.
         services.AddRabbitMqMessaging(configuration);
 
-        // Circuit breaker + timeout alrededor de la publicación (ver ADR 0004). Solo lo necesita
-        // quien publica (FlashQueue.Workers, vía PostgresReservationProcessor); los
-        // FlashQueue.Consumers.* llaman a AddRabbitMqMessaging directamente y no lo registran.
+        // Circuit breaker + timeout alrededor de la publicación (ADR 0004); los Consumers.* llaman
+        // a AddRabbitMqMessaging directamente y no lo registran.
         services.Configure<RabbitMqPublishResilienceOptions>(
             configuration.GetSection(RabbitMqPublishResilienceOptions.SectionName));
         services.AddSingleton<RabbitMqPublishResiliencePipelineProvider>();

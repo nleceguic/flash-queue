@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>FlashQueue — Panel en vivo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b0f14;
+    --panel: #121822;
+    --border: #232c38;
+    --text: #e6edf3;
+    --muted: #7d8b9a;
+    --confirmed: #2ea043;
+    --rejected: #da3633;
+    --accent: #58a6ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2.5rem 1.5rem;
+    min-height: 100vh;
+  }
+  h1 { font-size: 1.4rem; font-weight: 600; margin: 0 0 .25rem; }
+  .subtitle { color: var(--muted); font-size: .9rem; margin: 0 0 2rem; }
+  .subtitle code { color: var(--accent); }
+  .counters {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    width: 100%;
+    max-width: 720px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 2rem 1.5rem;
+    text-align: center;
+  }
+  .card .value {
+    font-size: 4.5rem;
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .card.confirmed .value { color: var(--confirmed); }
+  .card.rejected .value { color: var(--rejected); }
+  .card .label {
+    margin-top: .75rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    font-size: .8rem;
+  }
+  .stock {
+    width: 100%;
+    max-width: 720px;
+    margin-top: 1.5rem;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.25rem 1.5rem;
+  }
+  .stock .row { display: flex; justify-content: space-between; font-size: .95rem; margin-bottom: .6rem; }
+  .stock .row span:first-child { color: var(--muted); }
+  .bar { height: 10px; border-radius: 999px; background: #1c2733; overflow: hidden; }
+  .bar > div { height: 100%; background: var(--accent); width: 0%; transition: width .3s ease; }
+  .status {
+    margin-top: 1.5rem;
+    font-size: .85rem;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .status.live .dot { background: var(--confirmed); box-shadow: 0 0 8px var(--confirmed); }
+  .status.error .dot { background: var(--rejected); }
+</style>
+</head>
+<body>
+  <h1>FlashQueue — reservas en vivo</h1>
+  <p class="subtitle">Evento <code id="event-id-label">—</code></p>
+
+  <div class="counters">
+    <div class="card confirmed">
+      <div class="value" id="confirmed-count">0</div>
+      <div class="label">Confirmadas</div>
+    </div>
+    <div class="card rejected">
+      <div class="value" id="rejected-count">0</div>
+      <div class="label">Rechazadas</div>
+    </div>
+  </div>
+
+  <div class="stock">
+    <div class="row"><span>Stock disponible</span><span id="available-stock">—</span></div>
+    <div class="row"><span>Stock total</span><span id="total-stock">—</span></div>
+    <div class="bar"><div id="stock-bar"></div></div>
+  </div>
+
+  <div class="status" id="connection-status">
+    <div class="dot"></div>
+    <span id="connection-label">Conectando…</span>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@8.0.7/dist/browser/signalr.min.js"></script>
+  <script>
+    // eventId por query string (?eventId=...) — por defecto, el evento fijo de 500 plazas que
+    // siembra load-tests/seed-event.sql, para que el panel funcione sin configurar nada durante
+    // la demo del test de carga.
+    const params = new URLSearchParams(window.location.search);
+    const eventId = params.get("eventId") || "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+    document.getElementById("event-id-label").textContent = eventId;
+
+    const statusEl = document.getElementById("connection-status");
+    const labelEl = document.getElementById("connection-label");
+
+    function setConnectionState(state, label) {
+      statusEl.className = "status " + state;
+      labelEl.textContent = label;
+    }
+
+    async function refreshStatus() {
+      try {
+        const response = await fetch(`/events/${eventId}/status`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const data = await response.json();
+
+        document.getElementById("confirmed-count").textContent = data.confirmedReservations;
+        document.getElementById("rejected-count").textContent = data.rejectedReservations;
+        document.getElementById("available-stock").textContent = data.availableStock;
+        document.getElementById("total-stock").textContent = data.totalStock;
+
+        const pctUsed = data.totalStock > 0 ? (100 * data.reservedStock) / data.totalStock : 0;
+        document.getElementById("stock-bar").style.width = `${Math.min(100, pctUsed)}%`;
+      } catch (err) {
+        // El evento puede no existir todavía (404) si el panel se abre antes de sembrarlo — no
+        // es un error del panel, simplemente no hay nada que mostrar aún.
+        console.warn("No se pudo refrescar el estado del evento:", err);
+      }
+    }
+
+    // Sondeo de respaldo, independiente de SignalR: si la conexión en vivo se cae a media
+    // grabación, el panel sigue actualizándose (más lento) en vez de quedarse congelado.
+    setInterval(refreshStatus, 3000);
+    refreshStatus();
+
+    const connection = new signalR.HubConnectionBuilder()
+      .withUrl("/hubs/reservation-stats")
+      .withAutomaticReconnect()
+      .build();
+
+    connection.on("reservationResolved", (resolvedEventId) => {
+      if (resolvedEventId === eventId) {
+        refreshStatus();
+      }
+    });
+
+    connection.onreconnecting(() => setConnectionState("", "Reconectando…"));
+    connection.onreconnected(() => {
+      setConnectionState("live", "En vivo");
+      connection.invoke("SubscribeToEvent", eventId).catch(console.error);
+    });
+    connection.onclose(() => setConnectionState("error", "Desconectado — usando sondeo de respaldo"));
+
+    connection
+      .start()
+      .then(() => {
+        setConnectionState("live", "En vivo");
+        return connection.invoke("SubscribeToEvent", eventId);
+      })
+      .catch((err) => {
+        console.error(err);
+        setConnectionState("error", "Sin conexión en vivo — usando sondeo de respaldo");
+      });
+  </script>
+</body>
+</html>
