@@ -10,6 +10,7 @@
     <PackageReference Include="FluentAssertions" Version="8.10.0" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.18" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.13.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
   </ItemGroup>
@@ -21,6 +22,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\FlashQueue.Api\FlashQueue.Api.csproj" />
     <ProjectReference Include="..\..\src\FlashQueue.Application\FlashQueue.Application.csproj" />
+    <ProjectReference Include="..\..\src\FlashQueue.Infrastructure\FlashQueue.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\FlashQueue.Workers\FlashQueue.Workers.csproj" />
   </ItemGroup>
 
 </Project>

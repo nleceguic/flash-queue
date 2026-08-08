@@ -1,7 +1,9 @@
 using FlashQueue.Application.Ingestion;
 using FlashQueue.Application.Processing;
+using FlashQueue.Infrastructure;
+using FlashQueue.Infrastructure.Persistence;
 using FlashQueue.Workers;
-using FlashQueue.Workers.Processing;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -13,9 +15,13 @@ builder.Services.AddSingleton(sp =>
 
 builder.Services.Configure<ReservationProcessingOptions>(
     builder.Configuration.GetSection(ReservationProcessingOptions.SectionName));
-builder.Services.AddSingleton<IReservationProcessor, LoggingReservationProcessor>();
+builder.Services.AddInfrastructure(builder.Configuration);
 
 builder.Services.AddHostedService<ReservationProcessingWorker>();
 
 var host = builder.Build();
-host.Run();
+
+var migrator = host.Services.GetRequiredService<SchemaMigrator>();
+await migrator.EnsureSchemaAsync(CancellationToken.None);
+
+await host.RunAsync();
