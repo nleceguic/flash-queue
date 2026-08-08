@@ -1,0 +1,86 @@
+## .NET build artifacts
+bin/
+obj/
+out/
+publish/
+
+## Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## Rider
+.idea/
+*.sln.iml
+
+## VS Code
+.vscode/
+
+## Test results / coverage
+[Tt]est[Rr]esult*/
+[Cc]overage*/
+*.trx
+*.coverage
+*.coveragexml
+
+## NuGet
+*.nupkg
+*.snupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+.nuget/
+
+## Rider/ReSharper
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+## Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+## User-specific files
+*.rsuser
+*.userprefs
+
+## Secrets (never commit real ones)
+*.env
+appsettings.*.local.json
+secrets.json
+
+## Docker
+docker-compose.override.yml
+
+## OS files
+.DS_Store
+Thumbs.db
+
+## Rider/JetBrains
+*.sln.DotSettings.user
+
+## OpenTelemetry / local observability data
+otel-data/
+grafana-data/
+
+## Test de carga (k6) — resultados regenerables (la serie cruda puede pesar decenas de MB).
+## Para versionar una gráfica concreta en el README: git add -f load-tests/results/*.png
+load-tests/results/*
+!load-tests/results/.gitkeep
+
+## Memoria del proyecto para el asistente — se queda en local a propósito, no es para el repo
+## público (candidaturas). El README.md sí es público y autocontenido.
+CLAUDE.md
