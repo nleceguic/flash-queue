@@ -5,6 +5,7 @@ using FlashQueue.Infrastructure;
 using FlashQueue.Infrastructure.Observability;
 using FlashQueue.Infrastructure.Persistence;
 using FlashQueue.Workers;
+using FlashQueue.Workers.Events;
 using FlashQueue.Workers.Health;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
@@ -27,6 +28,7 @@ builder.Services.AddHostedService<ReservationProcessingWorker>();
 var app = builder.Build();
 
 app.MapDependenciesHealthEndpoint();
+app.MapEventStatusEndpoint();
 
 // Tamaño del channel de ingesta DE ESTE PROCESO (Workers tiene su propia instancia, separada de
 // la de Api — ver docs/adr/0006, sección de limitaciones conocidas). Mismo mecanismo que en Api.
