@@ -9,12 +9,16 @@ namespace FlashQueue.Infrastructure.Messaging;
 /// aquí — <see cref="PostgresReservationProcessor"/> publica fuera de cualquier consume context,
 /// disparado por <c>ReservationProcessingWorker</c>, no por un mensaje recibido.
 /// </summary>
-public sealed class ReservationEventPublisher(IBus bus) : IReservationEventPublisher
+public sealed class ReservationEventPublisher(IBus bus, RabbitMqPublishResiliencePipelineProvider resilienceProvider)
+    : IReservationEventPublisher
 {
     public Task PublishAsync<T>(T message, CancellationToken cancellationToken) where T : class
     {
         ArgumentNullException.ThrowIfNull(message);
 
-        return bus.Publish(message, cancellationToken);
+        return resilienceProvider.Pipeline.ExecuteAsync(
+            static (state, ct) => new ValueTask(state.Bus.Publish(state.Message, ct)),
+            (Bus: bus, Message: message),
+            cancellationToken).AsTask();
     }
 }

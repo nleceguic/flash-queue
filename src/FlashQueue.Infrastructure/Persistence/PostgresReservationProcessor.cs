@@ -3,6 +3,8 @@ using FlashQueue.Contracts.Events;
 using FlashQueue.Domain.Entities;
 using FlashQueue.Infrastructure.Messaging;
 using Microsoft.Extensions.Logging;
+using Polly.CircuitBreaker;
+using Polly.Timeout;
 
 namespace FlashQueue.Infrastructure.Persistence;
 
@@ -21,26 +23,40 @@ public sealed class PostgresReservationProcessor(
         var resolvedAt = reservation.ResolvedAt
             ?? throw new InvalidOperationException("Una reserva resuelta por ReserveAsync siempre debe tener ResolvedAt.");
 
-        if (reservation.Status == ReservationStatus.Confirmed)
+        // La reserva ya quedó persistida en Postgres en este punto (ver ADR 0004): si RabbitMQ
+        // está caído o el circuito está abierto, se registra el fallo de publicación y se
+        // continúa — nunca se deshace ni se reintenta la reserva por un problema del broker.
+        try
         {
-            logger.LogInformation(
-                "Reserva {ReservationId} del evento {EventId} confirmada ({Quantity} unidades).",
-                reservation.Id, reservation.EventId, reservation.Quantity);
+            if (reservation.Status == ReservationStatus.Confirmed)
+            {
+                logger.LogInformation(
+                    "Reserva {ReservationId} del evento {EventId} confirmada ({Quantity} unidades).",
+                    reservation.Id, reservation.EventId, reservation.Quantity);
 
-            await eventPublisher.PublishAsync(
-                new ReservationConfirmed(reservation.Id, reservation.EventId, reservation.UserId, resolvedAt),
-                cancellationToken);
+                await eventPublisher.PublishAsync(
+                    new ReservationConfirmed(reservation.Id, reservation.EventId, reservation.UserId, resolvedAt),
+                    cancellationToken);
+            }
+            else
+            {
+                logger.LogInformation(
+                    "Reserva {ReservationId} del evento {EventId} rechazada: {Reason}",
+                    reservation.Id, reservation.EventId, reservation.RejectionReason);
+
+                await eventPublisher.PublishAsync(
+                    new ReservationRejected(
+                        reservation.Id, reservation.EventId, reservation.UserId, resolvedAt, reservation.RejectionReason!),
+                    cancellationToken);
+            }
         }
-        else
+        catch (Exception ex) when (ex is BrokenCircuitException or TimeoutRejectedException)
         {
-            logger.LogInformation(
-                "Reserva {ReservationId} del evento {EventId} rechazada: {Reason}",
-                reservation.Id, reservation.EventId, reservation.RejectionReason);
-
-            await eventPublisher.PublishAsync(
-                new ReservationRejected(
-                    reservation.Id, reservation.EventId, reservation.UserId, resolvedAt, reservation.RejectionReason!),
-                cancellationToken);
+            logger.LogWarning(
+                ex,
+                "No se pudo publicar el evento de la reserva {ReservationId} (circuito RabbitMQ {CircuitState}): " +
+                "la reserva ya está persistida, el evento se pierde para esta ejecución.",
+                reservation.Id, ex is BrokenCircuitException ? "abierto" : "timeout");
         }
     }
 }

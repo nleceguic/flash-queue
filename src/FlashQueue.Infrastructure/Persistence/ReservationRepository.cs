@@ -1,7 +1,9 @@
 using Dapper;
 using FlashQueue.Domain.Entities;
 using FlashQueue.Domain.Exceptions;
+using FlashQueue.Infrastructure.Resilience;
 using Npgsql;
+using Polly;
 
 namespace FlashQueue.Infrastructure.Persistence;
 
@@ -10,16 +12,43 @@ namespace FlashQueue.Infrastructure.Persistence;
 /// <c>SELECT ... FOR UPDATE SKIP LOCKED</c>, decide Confirmed/Rejected según el stock
 /// disponible en ese instante, y persiste el cambio de stock + la reserva en la misma
 /// transacción. Ver docs/adr/0002-locking-skip-locked-con-reintentos.md para el porqué
-/// de SKIP LOCKED (con reintentos) frente a un FOR UPDATE que bloquea.
+/// de SKIP LOCKED (con reintentos) frente a un FOR UPDATE que bloquea, y
+/// docs/adr/0004-polly-retry-postgres-circuit-breaker-rabbitmq.md para el reintento adicional
+/// ante fallos transitorios de conexión (mecanismo distinto e independiente del anterior).
 /// </summary>
-public sealed class ReservationRepository(
-    NpgsqlDataSource dataSource, TimeProvider timeProvider, ReservationRepositoryOptions options)
+public sealed class ReservationRepository
 {
-    public async Task<Reservation> ReserveAsync(ReservationRequest request, CancellationToken cancellationToken)
+    private readonly NpgsqlDataSource _dataSource;
+    private readonly TimeProvider _timeProvider;
+    private readonly ReservationRepositoryOptions _options;
+    private readonly ResiliencePipeline<Reservation> _transientFaultPipeline;
+
+    public ReservationRepository(NpgsqlDataSource dataSource, TimeProvider timeProvider, ReservationRepositoryOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        _dataSource = dataSource;
+        _timeProvider = timeProvider;
+        _options = options;
+        _transientFaultPipeline = PostgresResilience.BuildTransientFaultPipeline<Reservation>(options);
+    }
+
+    public Task<Reservation> ReserveAsync(ReservationRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        // Todo el método es seguro de reintentar como unidad: nada se compromete hasta el
+        // CommitAsync final, así que un fallo transitorio a mitad de camino no deja escritura
+        // parcial alguna que limpiar.
+        return _transientFaultPipeline.ExecuteAsync(
+            static (state, ct) => new ValueTask<Reservation>(state.Self.ReserveCoreAsync(state.Request, ct)),
+            (Self: this, Request: request),
+            cancellationToken).AsTask();
+    }
+
+    private async Task<Reservation> ReserveCoreAsync(ReservationRequest request, CancellationToken cancellationToken)
+    {
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         var exists = await connection.ExecuteScalarAsync<bool>(new CommandDefinition(
@@ -36,7 +65,7 @@ public sealed class ReservationRepository(
         var stock = await AcquireEventStockAsync(connection, transaction, request.EventId, cancellationToken);
 
         var reservation = new Reservation(request.Id, request.EventId, request.UserId, request.Quantity, request.RequestedAt);
-        var now = timeProvider.GetUtcNow();
+        var now = _timeProvider.GetUtcNow();
 
         if (request.Quantity <= stock.TotalStock - stock.ReservedStock)
         {
@@ -86,7 +115,7 @@ public sealed class ReservationRepository(
     private async Task<EventStockRow> AcquireEventStockAsync(
         NpgsqlConnection connection, NpgsqlTransaction transaction, Guid eventId, CancellationToken cancellationToken)
     {
-        var deadline = timeProvider.GetUtcNow() + options.LockAcquisitionTimeout;
+        var deadline = _timeProvider.GetUtcNow() + _options.LockAcquisitionTimeout;
 
         while (true)
         {
@@ -106,14 +135,14 @@ public sealed class ReservationRepository(
                 return row;
             }
 
-            if (timeProvider.GetUtcNow() >= deadline)
+            if (_timeProvider.GetUtcNow() >= deadline)
             {
                 throw new TimeoutException(
-                    $"No se pudo adquirir el bloqueo de fila del evento {eventId} dentro de {options.LockAcquisitionTimeout}.");
+                    $"No se pudo adquirir el bloqueo de fila del evento {eventId} dentro de {_options.LockAcquisitionTimeout}.");
             }
 
             var jitter = TimeSpan.FromMilliseconds(Random.Shared.Next(0, 3));
-            await Task.Delay(options.LockRetryDelay + jitter, cancellationToken);
+            await Task.Delay(_options.LockRetryDelay + jitter, cancellationToken);
         }
     }
 

@@ -34,6 +34,13 @@ public static class InfrastructureServiceCollectionExtensions
         // FlashQueue.Workers solo publica (ver PostgresReservationProcessor), nunca consume: no
         // se pasa configureConsumers ni serviceName.
         services.AddRabbitMqMessaging(configuration);
+
+        // Circuit breaker + timeout alrededor de la publicación (ver ADR 0004). Solo lo necesita
+        // quien publica (FlashQueue.Workers, vía PostgresReservationProcessor); los
+        // FlashQueue.Consumers.* llaman a AddRabbitMqMessaging directamente y no lo registran.
+        services.Configure<RabbitMqPublishResilienceOptions>(
+            configuration.GetSection(RabbitMqPublishResilienceOptions.SectionName));
+        services.AddSingleton<RabbitMqPublishResiliencePipelineProvider>();
         services.AddSingleton<IReservationEventPublisher, ReservationEventPublisher>();
 
         return services;

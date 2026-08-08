@@ -4,6 +4,7 @@
     "FlashQueue.Workers": {
       "commandName": "Project",
       "dotnetRunMessages": true,
+      "applicationUrl": "http://localhost:5259",
       "environmentVariables": {
         "DOTNET_ENVIRONMENT": "Development"
       }
