@@ -1,0 +1,35 @@
+### Variables de host — descomenta la que quieras usar.
+### dotnet run (Properties/launchSettings.json):
+@HostAddress = http://localhost:5259
+### docker compose up -d (ver ../../docker-compose.yml y README-DOCKER.md): puerto 5257 para
+### ingesta, 5280 para health/status — desde ADR 0013 ambos apuntan al mismo proceso.
+# @HostAddress = http://localhost:5257
+
+@EventId = 00000000-0000-0000-0000-000000000000
+@UserId = 11111111-1111-1111-1111-111111111111
+
+### Health check simple, sin dependencias externas.
+GET {{HostAddress}}/health
+Accept: application/json
+
+### Estado de las dependencias (circuit breaker de RabbitMQ) — ver ADR 0004.
+GET {{HostAddress}}/health/dependencies
+Accept: application/json
+
+### Crea una reserva. El evento tiene que existir ya en la tabla `events` de Postgres — insértalo
+### a mano o usa load-tests/seed-event.sql como plantilla; si no existe, el worker la marca como
+### Rejected en cuanto la procesa (no falla el POST, que solo confirma que quedó encolada).
+POST {{HostAddress}}/events/{{EventId}}/reservations
+Content-Type: application/json
+Accept: application/json
+
+{
+  "userId": "{{UserId}}",
+  "quantity": 1
+}
+
+### Estado del evento: stock disponible y contadores de reservas Confirmed/Rejected. Sondéalo
+### tras el POST de arriba para ver la reserva resuelta (el worker la procesa en cuanto le toca
+### turno — ver ADR 0001, fairness round-robin por evento).
+GET {{HostAddress}}/events/{{EventId}}/status
+Accept: application/json
