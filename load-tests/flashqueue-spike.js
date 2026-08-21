@@ -9,9 +9,9 @@
 // ~500 peticiones (ReservationIngest:Capacity), el channel de Api se saturaba y cada WriteAsync
 // siguiente se quedaba bloqueado indefinidamente sin drenar nunca (ver docs/adr/0008 para las
 // cifras exactas de esa ejecución). Desde ADR 0013 ambos viven en el mismo proceso ("workers" en
-// docker-compose.yml) y comparten de verdad el mismo channel, así que el pico completo debería
-// llegar a persistirse en Postgres — vuelve a correr este script tras el fix para obtener números
-// reales de la topología corregida; los del README son de antes del ADR 0013, no vigentes.
+// docker-compose.yml) y comparten de verdad el mismo channel: el pico completo llega a Postgres y
+// se drena en ~6s, verificado con 3 ejecuciones reales de este mismo script — ver "Números del
+// test de carga" en el README raíz para las cifras vigentes de la topología corregida.
 //
 // Requiere k6 (https://k6.io) — sin dependencias/extensiones adicionales.
 //
